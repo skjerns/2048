@@ -3,14 +3,14 @@ plugins {
 }
 
 android {
-    compileSdk 35
+    compileSdk 36
     namespace "com.tpcstld.twozerogame"
 
     defaultConfig {
         applicationId "com.tpcstld.twozerogame"
 
         minSdkVersion 21
-        targetSdkVersion 35
+        targetSdkVersion 36
 
         versionCode 1012
         versionName "1.6.0"
