@@ -24,6 +24,7 @@ public class MainGame {
     static final int MERGE_ANIMATION = 1;
 
     static final int FADE_GLOBAL_ANIMATION = 0;
+    static final int UNSPAWN_GLOBAL_ANIMATION = 1;
     private static final long MOVE_ANIMATION_TIME = MainView.BASE_ANIMATION_TIME;
     private static final long SPAWN_ANIMATION_TIME = MainView.BASE_ANIMATION_TIME;
     private static final long NOTIFICATION_DELAY_TIME = MOVE_ANIMATION_TIME + SPAWN_ANIMATION_TIME;
@@ -60,6 +61,8 @@ public class MainGame {
     // Values that have been created by a merge in this game.
     private final Set<Integer> mergedValues = new HashSet<>();
     int undoCoins = 0;
+    // Identifies this game in the high score list.
+    long gameId;
 
     MainGame(Context context, MainView view) {
         mContext = context;
@@ -74,8 +77,10 @@ public class MainGame {
         if (grid == null) {
             grid = new Grid(numSquaresX, numSquaresY);
         } else {
+            recordGame();
             grid.clearGrid();
         }
+        gameId = System.currentTimeMillis();
         undoHistory.clear();
         mergedValues.clear();
         undoCoins = 0;
@@ -110,12 +115,15 @@ public class MainGame {
         }
     }
 
-    private void addRandomTile() {
+    @Nullable
+    private Tile addRandomTile() {
         if (grid.isCellsAvailable()) {
             int value = Math.random() < 0.9 ? 2 : 4;
             Tile tile = new Tile(grid.randomAvailableCell(), value);
             spawnTile(tile);
+            return tile;
         }
+        return null;
     }
 
     private void spawnTile(Tile tile) {
@@ -128,6 +136,7 @@ public class MainGame {
         if (size == numSquaresX) {
             return;
         }
+        recordGame();
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(mContext);
         settings.edit().putInt(BOARD_SIZE, size).apply();
         numSquaresX = size;
@@ -139,11 +148,29 @@ public class MainGame {
     }
 
     // Every board size keeps its own high score. The 4x4 one uses the original key.
-    private String highScoreKey() {
-        if (numSquaresX == DEFAULT_BOARD_SIZE) {
+    static String highScoreKey(int size) {
+        if (size == DEFAULT_BOARD_SIZE) {
             return HIGH_SCORE;
         }
-        return HIGH_SCORE + " " + numSquaresX + "x" + numSquaresY;
+        return HIGH_SCORE + " " + size + "x" + size;
+    }
+
+    private String highScoreKey() {
+        return highScoreKey(numSquaresX);
+    }
+
+    // Adds this game to the high score list of its board size, or updates its entry.
+    void recordGame() {
+        if (grid == null || score <= 0) {
+            return;
+        }
+        int bestTile = 0;
+        for (int[] column : grid.getValues()) {
+            for (int value : column) {
+                bestTile = Math.max(bestTile, value);
+            }
+        }
+        HighScores.record(mContext, numSquaresX, gameId, score, bestTile);
     }
 
     private void recordHighScore() {
@@ -222,12 +249,31 @@ public class MainGame {
             grid.setValues(state.values);
             score = state.score;
             gameState = state.gameState;
+            animateUndo(state);
             mView.refreshLastTime = true;
+            mView.resyncTime();
             mView.invalidate();
         }
     }
 
-    // Format: "score:gameState:v,v,v,...;score:gameState:..." with values column by column.
+    // Plays the move backwards: the new tile shrinks away and every tile slides back to where it
+    // came from, so merged tiles split up again.
+    private void animateUndo(UndoState state) {
+        if (state.moves != null) {
+            for (int i = 0; i + 3 < state.moves.length; i += 4) {
+                int[] extras = {state.moves[i + 2], state.moves[i + 3]};
+                aGrid.startAnimation(state.moves[i], state.moves[i + 1], MOVE_ANIMATION,
+                        MOVE_ANIMATION_TIME, 0, extras);
+            }
+        }
+        if (state.spawn != null) {
+            aGrid.startAnimation(-1, -1, UNSPAWN_GLOBAL_ANIMATION, SPAWN_ANIMATION_TIME, 0,
+                    state.spawn);
+        }
+    }
+
+    // Format: "score:gameState:values:moves:spawn;score:..." with the values column by column as
+    // "v,v,...", the moves as "fromX,fromY,toX,toY/..." and the spawn as "x,y,value" or "-".
     String undoHistoryToString() {
         StringBuilder builder = new StringBuilder();
         for (UndoState state : undoHistory) {
@@ -243,8 +289,34 @@ public class MainGame {
                     builder.append(state.values[xx][yy]);
                 }
             }
+            builder.append(':');
+            if (state.moves != null) {
+                for (int i = 0; i + 3 < state.moves.length; i += 4) {
+                    if (i != 0) {
+                        builder.append('/');
+                    }
+                    builder.append(state.moves[i]).append(',').append(state.moves[i + 1]).append(',')
+                            .append(state.moves[i + 2]).append(',').append(state.moves[i + 3]);
+                }
+            }
+            builder.append(':');
+            if (state.spawn != null) {
+                builder.append(state.spawn[0]).append(',').append(state.spawn[1]).append(',')
+                        .append(state.spawn[2]);
+            } else {
+                builder.append('-');
+            }
         }
         return builder.toString();
+    }
+
+    private static int[] parseInts(String data, String separator) {
+        String[] parts = data.split(separator);
+        int[] result = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            result[i] = Integer.parseInt(parts[i]);
+        }
+        return result;
     }
 
     void undoHistoryFromString(@Nullable String data) {
@@ -265,7 +337,14 @@ public class MainGame {
                         values[xx][yy] = Integer.parseInt(cells[xx * numSquaresY + yy]);
                     }
                 }
-                undoHistory.add(new UndoState(values, Long.parseLong(parts[0]), Integer.parseInt(parts[1])));
+                int[] moves = null;
+                int[] spawn = null;
+                if (parts.length >= 5) {
+                    moves = parts[3].isEmpty() ? null : parseInts(parts[3].replace('/', ','), ",");
+                    spawn = parts[4].equals("-") ? null : parseInts(parts[4], ",");
+                }
+                undoHistory.add(new UndoState(values, Long.parseLong(parts[0]),
+                        Integer.parseInt(parts[1]), moves, spawn));
             }
         } catch (RuntimeException e) {
             undoHistory.clear();
@@ -279,12 +358,6 @@ public class MainGame {
     void mergedValuesFromString(@Nullable String data) {
         mergedValues.clear();
         if (data == null) {
-            // Saved before undo coins existed: count everything on the board as already reached.
-            for (int[] column : grid.getValues()) {
-                for (int value : column) {
-                    mergedValues.add(value);
-                }
-            }
             return;
         }
         for (String value : TextUtils.split(data, ",")) {
@@ -313,13 +386,27 @@ public class MainGame {
         if (!isActive()) {
             return;
         }
-        UndoState previousState = new UndoState(grid.getValues(), score, gameState);
+        int[][] previousValues = grid.getValues();
+        long previousScore = score;
+        int previousGameState = gameState;
         Cell vector = getVector(direction);
         List<Integer> traversalsX = buildTraversalsX(vector);
         List<Integer> traversalsY = buildTraversalsY(vector);
         boolean moved = false;
 
         prepareTiles();
+
+        // Where every tile starts, so that an undo can slide it back
+        List<Tile> tiles = new ArrayList<>();
+        List<Cell> startingCells = new ArrayList<>();
+        for (Tile[] array : grid.field) {
+            for (Tile tile : array) {
+                if (tile != null) {
+                    tiles.add(tile);
+                    startingCells.add(new Cell(tile.getX(), tile.getY()));
+                }
+            }
+        }
 
         for (int xx : traversalsX) {
             for (int yy : traversalsY) {
@@ -380,8 +467,17 @@ public class MainGame {
         }
 
         if (moved) {
-            saveUndoState(previousState);
-            addRandomTile();
+            int[] moves = new int[tiles.size() * 4];
+            for (int i = 0; i < tiles.size(); i++) {
+                moves[i * 4] = startingCells.get(i).getX();
+                moves[i * 4 + 1] = startingCells.get(i).getY();
+                moves[i * 4 + 2] = tiles.get(i).getX();
+                moves[i * 4 + 3] = tiles.get(i).getY();
+            }
+            Tile spawned = addRandomTile();
+            int[] spawn = spawned == null ? null
+                    : new int[]{spawned.getX(), spawned.getY(), spawned.getValue()};
+            saveUndoState(new UndoState(previousValues, previousScore, previousGameState, moves, spawn));
             checkLose();
         }
         mView.resyncTime();
@@ -396,6 +492,7 @@ public class MainGame {
     }
 
     private void endGame() {
+        recordGame();
         aGrid.startAnimation(-1, -1, FADE_GLOBAL_ANIMATION, NOTIFICATION_ANIMATION_TIME, NOTIFICATION_DELAY_TIME, null);
         if (score >= highScore) {
             highScore = score;
@@ -506,11 +603,17 @@ public class MainGame {
         final int[][] values;
         final long score;
         final int gameState;
+        // fromX, fromY, toX, toY for every tile of the move, null if unknown
+        @Nullable final int[] moves;
+        // x, y, value of the tile spawned after the move, null if none
+        @Nullable final int[] spawn;
 
-        UndoState(int[][] values, long score, int gameState) {
+        UndoState(int[][] values, long score, int gameState, @Nullable int[] moves, @Nullable int[] spawn) {
             this.values = values;
             this.score = score;
             this.gameState = gameState;
+            this.moves = moves;
+            this.spawn = spawn;
         }
     }
 }

@@ -20,7 +20,11 @@ An ad-free build of the game, installable next to the Play Store version
 * **Undo coins:** the first time in a game that a merge creates a value of 32 or higher, you earn one
   undo coin. Every undo spends a coin and steps back one move, so undos can be chained as long as
   coins last. The badge on the undo button shows how many you have.
+* **Undo animation:** an undo plays the move backwards. The new tile shrinks away and merged tiles
+  split and slide back to where they came from.
 * **Achievement effect:** those first-time merges radiate the tile's colour out across the board.
+* **High scores:** the button under the board lists the 10 best games of every board size, one tab
+  per size, with the best tile of each game.
 
 Build with JDK 17–21 and the Android SDK: `cd 2048 && ./gradlew :base:assembleDebug`.
 `tools/run-emulator.sh` builds, boots an emulator and installs the game in one go.

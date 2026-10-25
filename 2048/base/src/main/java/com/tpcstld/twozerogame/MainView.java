@@ -62,6 +62,10 @@ public class MainView extends View {
     public int sXNewGame;
     public int sXUndo;
     public int sXBoardSize;
+    public int sXHighScores;
+    public int sYHighScores;
+    public int eXHighScores;
+    public int eYHighScores;
     public int iconSize;
     //Misc
     boolean refreshLastTime = true;
@@ -74,6 +78,9 @@ public class MainView extends View {
     private float headerTextSize;
     private float instructionsTextSize;
     private float gameOverTextSize;
+    private float buttonTextSize;
+    private float footerTextSize;
+    private int footerY;
     //Layout variables
     private int cellSize = 0;
     private float textSize = 0;
@@ -141,6 +148,8 @@ public class MainView extends View {
         }
 
         drawAchievements(canvas, true);
+
+        drawRemovedTiles(canvas);
 
         drawCells(canvas);
 
@@ -325,6 +334,28 @@ public class MainView extends View {
 
     private boolean isCoinPulseActive() {
         return System.nanoTime() - coinEarnedTime < COIN_PULSE_TIME;
+    }
+
+    private void drawHighScoresButton(Canvas canvas) {
+        drawDrawable(canvas,
+                backgroundRectangle,
+                sXHighScores,
+                sYHighScores, eXHighScores,
+                eYHighScores
+        );
+
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(getResources().getColor(R.color.text_white));
+        paint.setTextSize(buttonTextSize);
+        canvas.drawText(getResources().getString(R.string.high_scores),
+                (sXHighScores + eXHighScores) / 2f, (sYHighScores + eYHighScores) / 2f - centerText(), paint);
+    }
+
+    private void drawFooter(Canvas canvas, int width) {
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(getResources().getColor(R.color.text_black));
+        paint.setTextSize(footerTextSize);
+        canvas.drawText(getResources().getString(R.string.footer), width / 2f, footerY, paint);
     }
 
     private void drawBoardSizeButton(Canvas canvas) {
@@ -550,6 +581,23 @@ public class MainView extends View {
         return Color.argb(Math.max(0, Math.min(255, alpha)), Color.red(color), Color.green(color), Color.blue(color));
     }
 
+    // An undo takes back the tile that spawned after the move: it shrinks away where it appeared.
+    private void drawRemovedTiles(Canvas canvas) {
+        for (AnimationCell animation : game.aGrid.globalAnimation) {
+            if (animation.getAnimationType() != MainGame.UNSPAWN_GLOBAL_ANIMATION) {
+                continue;
+            }
+            float scale = 1 - (float) Math.min(1, animation.getPercentageDone());
+            int index = log2(animation.extras[2]);
+            int sX = startingX + gridWidth + (cellSize + gridWidth) * animation.extras[0];
+            int sY = startingY + gridWidth + (cellSize + gridWidth) * animation.extras[1];
+            float inset = cellSize / 2f * (1 - scale);
+            bitmapCell[index].setBounds((int) (sX + inset), (int) (sY + inset),
+                    (int) (sX + cellSize - inset), (int) (sY + cellSize - inset));
+            bitmapCell[index].draw(canvas);
+        }
+    }
+
     private void drawEndGameState(Canvas canvas) {
         double alphaChange = 1;
         continueButtonEnabled = false;
@@ -623,13 +671,14 @@ public class MainView extends View {
         drawBoardSizeButton(canvas);
         drawBackground(canvas);
         drawBackgroundGrid(canvas);
+        drawHighScoresButton(canvas);
+        drawFooter(canvas, width);
         if (showHelp) drawInstructions(canvas);
 
     }
 
     private void createBitmapCells() {
         Resources resources = getResources();
-        int[] cellRectangleIds = getCellRectangleIds();
         paint.setTextAlign(Paint.Align.CENTER);
         for (int xx = 1; xx < bitmapCell.length; xx++) {
             int value = (int) Math.pow(2, xx);
@@ -638,7 +687,7 @@ public class MainView extends View {
             paint.setTextSize(tempTextSize);
             Bitmap bitmap = Bitmap.createBitmap(cellSize, cellSize, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bitmap);
-            drawDrawable(canvas, ResourcesCompat.getDrawable(resources, cellRectangleIds[xx], null), 0, 0, cellSize, cellSize);
+            drawDrawable(canvas, ResourcesCompat.getDrawable(resources, getCellRectangleId(xx), null), 0, 0, cellSize, cellSize);
             drawCellText(canvas, value);
             bitmapCell[xx] = new BitmapDrawable(resources, bitmap);
             // Sample the tile colour from the top edge, clear of the rounded corners and the text
@@ -646,24 +695,23 @@ public class MainView extends View {
         }
     }
 
-    private int[] getCellRectangleIds() {
-        int[] cellRectangleIds = new int[numCellTypes];
-        cellRectangleIds[0] = R.drawable.cell_rectangle;
-        cellRectangleIds[1] = R.drawable.cell_rectangle_2;
-        cellRectangleIds[2] = R.drawable.cell_rectangle_4;
-        cellRectangleIds[3] = R.drawable.cell_rectangle_8;
-        cellRectangleIds[4] = R.drawable.cell_rectangle_16;
-        cellRectangleIds[5] = R.drawable.cell_rectangle_32;
-        cellRectangleIds[6] = R.drawable.cell_rectangle_64;
-        cellRectangleIds[7] = R.drawable.cell_rectangle_128;
-        cellRectangleIds[8] = R.drawable.cell_rectangle_256;
-        cellRectangleIds[9] = R.drawable.cell_rectangle_512;
-        cellRectangleIds[10] = R.drawable.cell_rectangle_1024;
-        cellRectangleIds[11] = R.drawable.cell_rectangle_2048;
-        for (int xx = 12; xx < cellRectangleIds.length; xx++) {
-            cellRectangleIds[xx] = R.drawable.cell_rectangle_4096;
-        }
-        return cellRectangleIds;
+    // The background of the tile with the value 2^index.
+    static int getCellRectangleId(int index) {
+        int[] cellRectangleIds = {
+                R.drawable.cell_rectangle,
+                R.drawable.cell_rectangle_2,
+                R.drawable.cell_rectangle_4,
+                R.drawable.cell_rectangle_8,
+                R.drawable.cell_rectangle_16,
+                R.drawable.cell_rectangle_32,
+                R.drawable.cell_rectangle_64,
+                R.drawable.cell_rectangle_128,
+                R.drawable.cell_rectangle_256,
+                R.drawable.cell_rectangle_512,
+                R.drawable.cell_rectangle_1024,
+                R.drawable.cell_rectangle_2048,
+        };
+        return index < cellRectangleIds.length ? cellRectangleIds[index] : R.drawable.cell_rectangle_4096;
     }
 
     private void createOverlays() {
@@ -760,6 +808,27 @@ public class MainView extends View {
         sXNewGame = (endingX - iconSize);
         sXUndo = sXNewGame - iconSize * 3 / 2 - iconPaddingSize;
         sXBoardSize = sXUndo - iconSize * 3 / 2 - iconPaddingSize;
+
+        // High scores button under the board
+        buttonTextSize = bodyTextSize * 0.75f;
+        paint.setTextSize(buttonTextSize);
+        int highScoresWidth = (int) paint.measureText(getResources().getString(R.string.high_scores)) + textPaddingSize * 4;
+        sXHighScores = screenMiddleX - highScoresWidth / 2;
+        eXHighScores = sXHighScores + highScoresWidth;
+        sYHighScores = endingY + iconSize;
+        eYHighScores = sYHighScores + iconSize;
+
+        // Footer at the bottom of the screen, clear of the navigation bar the app draws behind
+        footerTextSize = titleTextSize * 1.4f;
+        int bottomInset = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            WindowInsets windowInsets = getRootWindowInsets();
+            if (windowInsets != null) {
+                bottomInset = windowInsets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+            }
+        }
+        footerY = Math.max(height - bottomInset - textPaddingSize * 2,
+                (int) (eYHighScores + footerTextSize * 2));
         resyncTime();
     }
 

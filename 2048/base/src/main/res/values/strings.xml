@@ -19,4 +19,10 @@
     <string name="board_size_dialog_title">Change board size?</string>
     <string name="board_size_dialog_message">This starts a new game on the new board. Your current game will be lost.</string>
     <string name="new_game">New game</string>
+
+    <!-- High scores -->
+    <string name="high_scores">High Scores</string>
+    <string name="no_high_scores">No games yet. Go play!</string>
+    <string name="current_game">Current game</string>
+    <string name="close">Close</string>
 </resources>

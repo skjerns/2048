@@ -50,7 +50,8 @@ class InputListener implements View.OnTouchListener {
                 hasMoved = false;
                 beganOnIcon = iconPressed(mView.sXNewGame, mView.sYIcons)
                               || iconPressed(mView.sXUndo, mView.sYIcons)
-                              || iconPressed(mView.sXBoardSize, mView.sYIcons);
+                              || iconPressed(mView.sXBoardSize, mView.sYIcons)
+                              || highScoresPressed();
                 return true;
             case MotionEvent.ACTION_MOVE:
                 x = event.getX();
@@ -142,6 +143,9 @@ class InputListener implements View.OnTouchListener {
                         mView.game.revertUndoState();
                     } else if (iconPressed(mView.sXBoardSize, mView.sYIcons)) {
                         showBoardSizeDialog();
+                    } else if (highScoresPressed()) {
+                        mView.game.recordGame();
+                        new HighScoresDialog(mView.getContext(), mView.game).show();
                     } else if (isTap(2) && inRange(mView.startingX, x, mView.endingX)
                             && inRange(mView.startingY, y, mView.endingY) && mView.continueButtonEnabled) {
                         mView.game.setEndlessMode();
@@ -202,6 +206,11 @@ class InputListener implements View.OnTouchListener {
     private boolean iconPressed(int sx, int sy) {
         return isTap(1) && inRange(sx, x, sx + mView.iconSize)
                 && inRange(sy, y, sy + mView.iconSize);
+    }
+
+    private boolean highScoresPressed() {
+        return isTap(1) && inRange(mView.sXHighScores, x, mView.eXHighScores)
+                && inRange(mView.sYHighScores, y, mView.eYHighScores);
     }
 
     private boolean inRange(float starting, float check, float ending) {

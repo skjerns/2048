@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">2048</string>
     <string name="header">2048</string>
+    <string name="footer">For Melissa ♥️</string>
 </resources>

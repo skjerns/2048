@@ -23,6 +23,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String UNDO_HISTORY = "undo history";
     private static final String UNDO_COINS = "undo coins";
     private static final String MERGED_VALUES = "merged values";
+    private static final String GAME_ID = "game id";
 
     private static final String NO_LOGIN_PROMPT = "no_login_prompt";
 
@@ -85,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void save() {
+        view.game.recordGame();
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
         SharedPreferences.Editor editor = settings.edit();
         Tile[][] field = view.game.grid.field;
@@ -105,6 +107,7 @@ public class MainActivity extends AppCompatActivity {
         editor.putString(UNDO_HISTORY, view.game.undoHistoryToString());
         editor.putInt(UNDO_COINS, view.game.undoCoins);
         editor.putString(MERGED_VALUES, view.game.mergedValuesToString());
+        editor.putLong(GAME_ID, view.game.gameId);
         editor.apply();
     }
 
@@ -140,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
         view.game.undoHistoryFromString(settings.getString(UNDO_HISTORY, null));
         view.game.undoCoins = settings.getInt(UNDO_COINS, 0);
         view.game.mergedValuesFromString(settings.getString(MERGED_VALUES, null));
+        view.game.gameId = settings.getLong(GAME_ID, view.game.gameId);
     }
 
     private void setStatusBarColor(Window window, int color) {

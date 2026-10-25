@@ -7,4 +7,7 @@
     <color name="icon_background">#e8ba2e</color>
 
     <color name="status_background">#bbada0</color>
+
+    <color name="button_background">#8f7a66</color>
+    <color name="current_game_background">#eee4da</color>
 </resources>
