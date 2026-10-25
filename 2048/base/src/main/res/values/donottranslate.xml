@@ -3,4 +3,16 @@
     <string name="app_name">2048</string>
     <string name="header">2048</string>
     <string name="footer">For Melissa ♥️</string>
+
+    <!-- Cheers for the first merge of a value above 1024 -->
+    <string-array name="cheers">
+        <item>Melissa ist die Beste!</item>
+        <item>Fr Mañana go go!</item>
+        <item>Evviva!</item>
+        <item>Wooooow</item>
+        <item>Sapperlott!</item>
+        <item>5/10 ⭐ nicht schlecht</item>
+        <item>Che Bravo</item>
+        <item>Ottimo!</item>
+    </string-array>
 </resources>

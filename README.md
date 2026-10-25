@@ -23,6 +23,7 @@ An ad-free build of the game, installable next to the Play Store version
 * **Undo animation:** an undo plays the move backwards. The new tile shrinks away and merged tiles
   split and slide back to where they came from.
 * **Achievement effect:** those first-time merges radiate the tile's colour out across the board.
+  First merges above 1024 also pop up a random cheer.
 * **High scores:** the button under the board lists the 10 best games of every board size, one tab
   per size, with the best tile of each game.
 

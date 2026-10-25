@@ -40,6 +40,9 @@ public class MainView extends View {
     private static final long COIN_PULSE_TIME = BASE_ANIMATION_TIME * 6;
     private static final int ACHIEVEMENT_RINGS = 3;
     private static final int ACHIEVEMENT_PARTICLES = 14;
+    // First merges of values above 1024 also get a random cheer
+    private static final int CHEER_MIN_VALUE = 2048;
+    private static final long CHEER_ANIMATION_TIME = BASE_ANIMATION_TIME * 24L;
     public final int numCellTypes = 21;
     private final BitmapDrawable[] bitmapCell = new BitmapDrawable[numCellTypes];
     private final int[] cellColors = new int[numCellTypes];
@@ -51,6 +54,12 @@ public class MainView extends View {
     private final ArrayList<Achievement> achievements = new ArrayList<>();
     private final Random random = new Random();
     private long coinEarnedTime = 0;
+    private final Paint cheerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    @Nullable
+    private String cheerText;
+    private int cheerIndex;
+    private long cheerStartTime;
+    private int lastCheer = -1;
     public boolean hasSaveState = false;
     public boolean continueButtonEnabled = false;
     public int startingX;
@@ -80,6 +89,7 @@ public class MainView extends View {
     private float gameOverTextSize;
     private float buttonTextSize;
     private float footerTextSize;
+    private float cheerTextSize;
     private int footerY;
     //Layout variables
     private int cellSize = 0;
@@ -121,6 +131,7 @@ public class MainView extends View {
             Typeface font = Typeface.createFromAsset(resources.getAssets(), "ClearSans-Bold.ttf");
             paint.setTypeface(font);
             paint.setAntiAlias(true);
+            cheerPaint.setTypeface(font);
         } catch (Exception e) {
             Log.e(TAG, "Error getting assets?", e);
         }
@@ -163,6 +174,8 @@ public class MainView extends View {
             drawEndlessText(canvas);
         }
 
+        drawCheer(canvas);
+
         //Refresh the screen if there is still an animation running
         if (game.aGrid.isAnimationActive()) {
             invalidate(startingX, startingY, endingX, endingY);
@@ -172,7 +185,7 @@ public class MainView extends View {
             invalidate();
             refreshLastTime = false;
         }
-        if (!achievements.isEmpty() || isCoinPulseActive()) {
+        if (!achievements.isEmpty() || isCoinPulseActive() || cheerText != null) {
             invalidate();
         }
     }
@@ -491,12 +504,82 @@ public class MainView extends View {
         long startTime = System.nanoTime() + ACHIEVEMENT_DELAY_TIME;
         achievements.add(new Achievement(x, y, log2(value), startTime, random));
         coinEarnedTime = startTime;
+        if (value >= CHEER_MIN_VALUE) {
+            String[] cheers = getResources().getStringArray(R.array.cheers);
+            int cheer = random.nextInt(cheers.length);
+            if (cheer == lastCheer) {
+                // Never the same cheer twice in a row
+                cheer = (cheer + 1) % cheers.length;
+            }
+            lastCheer = cheer;
+            cheerText = cheers[cheer];
+            cheerIndex = log2(value);
+            cheerStartTime = startTime;
+        }
         invalidate();
     }
 
     void clearAchievements() {
         achievements.clear();
         coinEarnedTime = 0;
+        cheerText = null;
+    }
+
+    // The cheer pops in over the upper part of the board, tilted and wobbling a little, then
+    // floats up and fades out.
+    private void drawCheer(Canvas canvas) {
+        if (cheerText == null) {
+            return;
+        }
+        float progress = (float) (System.nanoTime() - cheerStartTime) / CHEER_ANIMATION_TIME;
+        if (progress > 1) {
+            cheerText = null;
+            return;
+        } else if (progress < 0) {
+            return;
+        }
+
+        float scale = 1;
+        if (progress < 0.12f) {
+            scale = 0.3f + 0.9f * easeOut(progress / 0.12f);
+        } else if (progress < 0.22f) {
+            scale = 1.2f - 0.2f * (progress - 0.12f) / 0.1f;
+        }
+        int alpha = 255;
+        if (progress < 0.08f) {
+            alpha = (int) (255 * progress / 0.08f);
+        } else if (progress > 0.7f) {
+            alpha = (int) (255 * (1 - progress) / 0.3f);
+        }
+
+        float centerX = (startingX + endingX) / 2f;
+        float centerY = startingY + (endingY - startingY) * (0.3f - 0.08f * progress);
+        cheerPaint.setTextAlign(Paint.Align.CENTER);
+        cheerPaint.setTextSize(cheerTextSize);
+        float maxWidth = (endingX - startingX) * 0.9f;
+        float width = cheerPaint.measureText(cheerText);
+        if (width > maxWidth) {
+            cheerPaint.setTextSize(cheerTextSize * maxWidth / width);
+        }
+        float baseline = centerY - (cheerPaint.descent() + cheerPaint.ascent()) / 2;
+
+        int color = cellColors[Math.min(cheerIndex, numCellTypes - 1)];
+        int outline = Color.rgb(Color.red(color) * 7 / 10, Color.green(color) * 7 / 10, Color.blue(color) * 7 / 10);
+
+        canvas.save();
+        canvas.rotate(-6 + 2 * (float) Math.sin(progress * Math.PI * 4), centerX, centerY);
+        canvas.scale(scale, scale, centerX, centerY);
+        cheerPaint.setStyle(Paint.Style.STROKE);
+        cheerPaint.setStrokeJoin(Paint.Join.ROUND);
+        cheerPaint.setStrokeWidth(cheerPaint.getTextSize() * 0.14f);
+        cheerPaint.setColor(withAlpha(outline, alpha));
+        cheerPaint.setShadowLayer(gridWidth, 0, gridWidth / 2f, withAlpha(Color.BLACK, alpha / 4));
+        canvas.drawText(cheerText, centerX, baseline, cheerPaint);
+        cheerPaint.setStyle(Paint.Style.FILL);
+        cheerPaint.clearShadowLayer();
+        cheerPaint.setColor(withAlpha(getResources().getColor(R.color.text_white), alpha));
+        canvas.drawText(cheerText, centerX, baseline, cheerPaint);
+        canvas.restore();
     }
 
     // The colour of a new tile radiates out of it: a soft glow below the tiles (glow == true),
@@ -808,6 +891,8 @@ public class MainView extends View {
         sXNewGame = (endingX - iconSize);
         sXUndo = sXNewGame - iconSize * 3 / 2 - iconPaddingSize;
         sXBoardSize = sXUndo - iconSize * 3 / 2 - iconPaddingSize;
+
+        cheerTextSize = textSize * 1.3f;
 
         // High scores button under the board
         buttonTextSize = bodyTextSize * 0.75f;
