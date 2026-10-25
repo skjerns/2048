@@ -11,6 +11,20 @@ Logo redrawn by Margaret Lu.
 
 Use governed by the MIT License.
 
+## About this fork
+
+An ad-free build of the game, installable next to the Play Store version
+(`com.tpcstld.twozerogame.noads`), with a few additions:
+
+* **Board sizes:** tap the `4×4` button to play on 4×4, 5×5 or 6×6. Each size keeps its own high score.
+* **Undo coins:** the first time in a game that a merge creates a value of 32 or higher, you earn one
+  undo coin. Every undo spends a coin and steps back one move, so undos can be chained as long as
+  coins last. The badge on the undo button shows how many you have.
+* **Achievement effect:** those first-time merges radiate the tile's colour out across the board.
+
+Build with JDK 17–21 and the Android SDK: `cd 2048 && ./gradlew :base:assembleDebug`.
+`tools/run-emulator.sh` builds, boots an emulator and installs the game in one go.
+
 ## Contributing
 
 This is an open source project and PRs are welcome and appreciated. Here are some of the things that you could help out with: 

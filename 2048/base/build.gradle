@@ -7,7 +7,7 @@ android {
     namespace "com.tpcstld.twozerogame"
 
     defaultConfig {
-        applicationId "com.tpcstld.twozerogame"
+        applicationId "com.tpcstld.twozerogame.noads"
 
         minSdkVersion 21
         targetSdkVersion 35

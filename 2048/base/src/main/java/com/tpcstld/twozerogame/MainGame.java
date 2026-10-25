@@ -3,14 +3,19 @@ package com.tpcstld.twozerogame;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
+import android.text.TextUtils;
+
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.tpcstld.twozerogame.snapshot.SnapshotData;
 import com.tpcstld.twozerogame.snapshot.SnapshotManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class MainGame {
 
@@ -31,39 +36,50 @@ public class MainGame {
     private static final int GAME_LOST = -1;
     private static final int GAME_NORMAL = 0;
     int gameState = GAME_NORMAL;
-    int lastGameState = GAME_NORMAL;
-    private int bufferGameState = GAME_NORMAL;
     private static final int GAME_ENDLESS = 2;
     private static final int GAME_ENDLESS_WON = 3;
     private static final String HIGH_SCORE = "high score";
     private static final String FIRST_RUN = "first run";
+    private static final String BOARD_SIZE = "board size";
+    static final int DEFAULT_BOARD_SIZE = 4;
+    static final int[] BOARD_SIZES = {4, 5, 6};
+    // Merging a value of at least this size for the first time in a game earns an undo coin.
+    private static final int MIN_COIN_VALUE = 32;
+    private static final int MAX_UNDO_HISTORY = 64;
     private static int endingMaxValue;
-    final int numSquaresX = 4;
-    final int numSquaresY = 4;
+    int numSquaresX;
+    int numSquaresY;
     private final Context mContext;
     private final MainView mView;
     Grid grid = null;
     AnimationGrid aGrid;
-    boolean canUndo;
     public long score = 0;
     long highScore = 0;
-    long lastScore = 0;
-    private long bufferScore = 0;
+    // Board states before each move, most recent last.
+    private final List<UndoState> undoHistory = new ArrayList<>();
+    // Values that have been created by a merge in this game.
+    private final Set<Integer> mergedValues = new HashSet<>();
+    int undoCoins = 0;
 
     MainGame(Context context, MainView view) {
         mContext = context;
         mView = view;
         endingMaxValue = (int) Math.pow(2, view.numCellTypes - 1);
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
+        numSquaresX = settings.getInt(BOARD_SIZE, DEFAULT_BOARD_SIZE);
+        numSquaresY = numSquaresX;
     }
 
     void newGame() {
         if (grid == null) {
             grid = new Grid(numSquaresX, numSquaresY);
         } else {
-            prepareUndoState();
-            saveUndoState();
             grid.clearGrid();
         }
+        undoHistory.clear();
+        mergedValues.clear();
+        undoCoins = 0;
+        mView.clearAchievements();
         aGrid = new AnimationGrid(numSquaresX, numSquaresY);
         highScore = getHighScore();
         if (score >= highScore) {
@@ -108,14 +124,38 @@ public class MainGame {
                 SPAWN_ANIMATION_TIME, MOVE_ANIMATION_TIME, null); //Direction: -1 = EXPANDING
     }
 
+    void setBoardSize(int size) {
+        if (size == numSquaresX) {
+            return;
+        }
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(mContext);
+        settings.edit().putInt(BOARD_SIZE, size).apply();
+        numSquaresX = size;
+        numSquaresY = size;
+        score = 0;
+        grid = null;
+        newGame();
+        mView.onBoardSizeChanged();
+    }
+
+    // Every board size keeps its own high score. The 4x4 one uses the original key.
+    private String highScoreKey() {
+        if (numSquaresX == DEFAULT_BOARD_SIZE) {
+            return HIGH_SCORE;
+        }
+        return HIGH_SCORE + " " + numSquaresX + "x" + numSquaresY;
+    }
+
     private void recordHighScore() {
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(mContext);
         SharedPreferences.Editor editor = settings.edit();
-        editor.putLong(HIGH_SCORE, highScore);
+        editor.putLong(highScoreKey(), highScore);
         editor.apply();
 
-        SnapshotData data = new SnapshotData(highScore);
-        SnapshotManager.saveSnapshot(mContext, data);
+        if (numSquaresX == DEFAULT_BOARD_SIZE) {
+            SnapshotData data = new SnapshotData(highScore);
+            SnapshotManager.saveSnapshot(mContext, data);
+        }
     }
 
     void handleSnapshot(SnapshotData data) {
@@ -132,7 +172,7 @@ public class MainGame {
 
     private long getHighScore() {
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(mContext);
-        return settings.getLong(HIGH_SCORE, -1);
+        return settings.getLong(highScoreKey(), -1);
     }
 
     private boolean firstRun() {
@@ -162,28 +202,96 @@ public class MainGame {
         tile.updatePosition(cell);
     }
 
-    private void saveUndoState() {
-        grid.saveTiles();
-        canUndo = true;
-        lastScore = bufferScore;
-        lastGameState = bufferGameState;
+    private void saveUndoState(UndoState state) {
+        undoHistory.add(state);
+        if (undoHistory.size() > MAX_UNDO_HISTORY) {
+            undoHistory.remove(0);
+        }
     }
 
-    private void prepareUndoState() {
-        grid.prepareSaveTiles();
-        bufferScore = score;
-        bufferGameState = gameState;
+    boolean canUndo() {
+        return undoCoins > 0 && !undoHistory.isEmpty();
     }
 
+    // Each undo costs one coin and steps back one move, so undos can be chained.
     void revertUndoState() {
-        if (canUndo) {
-            canUndo = false;
+        if (canUndo()) {
+            undoCoins--;
+            UndoState state = undoHistory.remove(undoHistory.size() - 1);
             aGrid.cancelAnimations();
-            grid.revertTiles();
-            score = lastScore;
-            gameState = lastGameState;
+            grid.setValues(state.values);
+            score = state.score;
+            gameState = state.gameState;
             mView.refreshLastTime = true;
             mView.invalidate();
+        }
+    }
+
+    // Format: "score:gameState:v,v,v,...;score:gameState:..." with values column by column.
+    String undoHistoryToString() {
+        StringBuilder builder = new StringBuilder();
+        for (UndoState state : undoHistory) {
+            if (builder.length() > 0) {
+                builder.append(';');
+            }
+            builder.append(state.score).append(':').append(state.gameState).append(':');
+            for (int xx = 0; xx < numSquaresX; xx++) {
+                for (int yy = 0; yy < numSquaresY; yy++) {
+                    if (xx != 0 || yy != 0) {
+                        builder.append(',');
+                    }
+                    builder.append(state.values[xx][yy]);
+                }
+            }
+        }
+        return builder.toString();
+    }
+
+    void undoHistoryFromString(@Nullable String data) {
+        undoHistory.clear();
+        if (TextUtils.isEmpty(data)) {
+            return;
+        }
+        try {
+            for (String entry : data.split(";")) {
+                String[] parts = entry.split(":");
+                String[] cells = parts[2].split(",");
+                if (cells.length != numSquaresX * numSquaresY) {
+                    continue;
+                }
+                int[][] values = new int[numSquaresX][numSquaresY];
+                for (int xx = 0; xx < numSquaresX; xx++) {
+                    for (int yy = 0; yy < numSquaresY; yy++) {
+                        values[xx][yy] = Integer.parseInt(cells[xx * numSquaresY + yy]);
+                    }
+                }
+                undoHistory.add(new UndoState(values, Long.parseLong(parts[0]), Integer.parseInt(parts[1])));
+            }
+        } catch (RuntimeException e) {
+            undoHistory.clear();
+        }
+    }
+
+    String mergedValuesToString() {
+        return TextUtils.join(",", mergedValues);
+    }
+
+    void mergedValuesFromString(@Nullable String data) {
+        mergedValues.clear();
+        if (data == null) {
+            // Saved before undo coins existed: count everything on the board as already reached.
+            for (int[] column : grid.getValues()) {
+                for (int value : column) {
+                    mergedValues.add(value);
+                }
+            }
+            return;
+        }
+        for (String value : TextUtils.split(data, ",")) {
+            try {
+                mergedValues.add(Integer.parseInt(value));
+            } catch (NumberFormatException ignored) {
+            }
         }
     }
 
@@ -205,7 +313,7 @@ public class MainGame {
         if (!isActive()) {
             return;
         }
-        prepareUndoState();
+        UndoState previousState = new UndoState(grid.getValues(), score, gameState);
         Cell vector = getVector(direction);
         List<Integer> traversalsX = buildTraversalsX(vector);
         List<Integer> traversalsY = buildTraversalsY(vector);
@@ -247,6 +355,12 @@ public class MainGame {
                             recordHighScore();
                         }
 
+                        // A value merged for the first time in this game earns an undo coin
+                        if (merged.getValue() >= MIN_COIN_VALUE && mergedValues.add(merged.getValue())) {
+                            undoCoins++;
+                            mView.showAchievement(merged.getX(), merged.getY(), merged.getValue());
+                        }
+
                         // The mighty 2048 tile
                         if (merged.getValue() >= winValue() && !gameWon()) {
                             gameState = gameState + GAME_WIN; // Set win state
@@ -266,7 +380,7 @@ public class MainGame {
         }
 
         if (moved) {
-            saveUndoState();
+            saveUndoState(previousState);
             addRandomTile();
             checkLose();
         }
@@ -386,5 +500,17 @@ public class MainGame {
 
     boolean canContinue() {
         return !(gameState == GAME_ENDLESS || gameState == GAME_ENDLESS_WON);
+    }
+
+    private static class UndoState {
+        final int[][] values;
+        final long score;
+        final int gameState;
+
+        UndoState(int[][] values, long score, int gameState) {
+            this.values = values;
+            this.score = score;
+            this.gameState = gameState;
+        }
     }
 }

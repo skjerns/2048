@@ -5,7 +5,11 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Insets;
+import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -20,6 +24,8 @@ import androidx.annotation.Nullable;
 import androidx.core.content.res.ResourcesCompat;
 
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Random;
 
 public class MainView extends View {
 
@@ -28,11 +34,23 @@ public class MainView extends View {
     private static final String TAG = MainView.class.getSimpleName();
     private static final float MERGING_ACCELERATION = (float) -0.5;
     private static final float INITIAL_VELOCITY = (1 - MERGING_ACCELERATION) / 4;
+    // Achievements start once the merging tiles have met.
+    private static final long ACHIEVEMENT_DELAY_TIME = BASE_ANIMATION_TIME;
+    private static final long ACHIEVEMENT_ANIMATION_TIME = BASE_ANIMATION_TIME * 12;
+    private static final long COIN_PULSE_TIME = BASE_ANIMATION_TIME * 6;
+    private static final int ACHIEVEMENT_RINGS = 3;
+    private static final int ACHIEVEMENT_PARTICLES = 14;
     public final int numCellTypes = 21;
     private final BitmapDrawable[] bitmapCell = new BitmapDrawable[numCellTypes];
+    private final int[] cellColors = new int[numCellTypes];
     public final MainGame game;
     //Internal variables
     private final Paint paint = new Paint();
+    private final Paint effectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF effectRect = new RectF();
+    private final ArrayList<Achievement> achievements = new ArrayList<>();
+    private final Random random = new Random();
+    private long coinEarnedTime = 0;
     public boolean hasSaveState = false;
     public boolean continueButtonEnabled = false;
     public int startingX;
@@ -43,6 +61,7 @@ public class MainView extends View {
     public int sYIcons;
     public int sXNewGame;
     public int sXUndo;
+    public int sXBoardSize;
     public int iconSize;
     //Misc
     boolean refreshLastTime = true;
@@ -66,6 +85,7 @@ public class MainView extends View {
     private Drawable backgroundRectangle;
     private Drawable lightUpRectangle;
     private Drawable fadeRectangle;
+    private Drawable undoIcon;
     private Bitmap background = null;
     private BitmapDrawable loseGameOverlay;
     private BitmapDrawable winGameContinueOverlay;
@@ -89,6 +109,7 @@ public class MainView extends View {
             backgroundRectangle = ResourcesCompat.getDrawable(resources, R.drawable.background_rectangle, null);
             lightUpRectangle = ResourcesCompat.getDrawable(resources, R.drawable.light_up_rectangle, null);
             fadeRectangle = ResourcesCompat.getDrawable(resources, R.drawable.fade_rectangle, null);
+            undoIcon = ResourcesCompat.getDrawable(resources, R.drawable.ic_action_undo, null).mutate();
             this.setBackgroundColor(resources.getColor(R.color.background));
             Typeface font = Typeface.createFromAsset(resources.getAssets(), "ClearSans-Bold.ttf");
             paint.setTypeface(font);
@@ -113,11 +134,17 @@ public class MainView extends View {
 
         drawScoreText(canvas);
 
+        drawUndoButton(canvas);
+
         if (!game.isActive() && !game.aGrid.isAnimationActive()) {
             drawNewGameButton(canvas, true);
         }
 
+        drawAchievements(canvas, true);
+
         drawCells(canvas);
+
+        drawAchievements(canvas, false);
 
         if (!game.isActive()) {
             drawEndGameState(canvas);
@@ -136,11 +163,25 @@ public class MainView extends View {
             invalidate();
             refreshLastTime = false;
         }
+        if (!achievements.isEmpty() || isCoinPulseActive()) {
+            invalidate();
+        }
     }
 
     @Override
     protected void onSizeChanged(int width, int height, int oldW, int oldH) {
         super.onSizeChanged(width, height, oldW, oldH);
+        createLayout(width, height);
+    }
+
+    void onBoardSizeChanged() {
+        if (getWidth() > 0 && getHeight() > 0) {
+            createLayout(getWidth(), getHeight());
+        }
+        invalidate();
+    }
+
+    private void createLayout(int width, int height) {
         getLayout(width, height);
         createBitmapCells();
         createBackgroundBitmap(width, height);
@@ -235,21 +276,71 @@ public class MainView extends View {
     }
 
     private void drawUndoButton(Canvas canvas) {
+        // Faded out while there are no undo coins to spend
+        int alpha = game.canUndo() ? 255 : 90;
 
+        backgroundRectangle.setAlpha(alpha);
         drawDrawable(canvas,
                 backgroundRectangle,
                 sXUndo,
                 sYIcons, sXUndo + iconSize,
                 sYIcons + iconSize
         );
+        backgroundRectangle.setAlpha(255);
 
+        undoIcon.setAlpha(alpha);
         drawDrawable(canvas,
-                ResourcesCompat.getDrawable(getResources(), R.drawable.ic_action_undo, null),
+                undoIcon,
                 sXUndo + iconPaddingSize,
                 sYIcons + iconPaddingSize,
                 sXUndo + iconSize - iconPaddingSize,
                 sYIcons + iconSize - iconPaddingSize
         );
+
+        if (game.undoCoins > 0) {
+            drawUndoCoins(canvas);
+        }
+    }
+
+    // A badge with the number of undo coins, which pops when a coin is earned.
+    private void drawUndoCoins(Canvas canvas) {
+        float scale = 1;
+        long sinceEarned = System.nanoTime() - coinEarnedTime;
+        if (sinceEarned >= 0 && sinceEarned < COIN_PULSE_TIME) {
+            scale += 0.6f * (float) Math.sin(Math.PI * sinceEarned / COIN_PULSE_TIME);
+        }
+        float radius = iconSize * 0.27f * scale;
+        float centerX = sXUndo + iconSize - iconSize * 0.08f;
+        float centerY = sYIcons + iconSize * 0.08f;
+
+        effectPaint.setStyle(Paint.Style.FILL);
+        effectPaint.setColor(getResources().getColor(R.color.icon_background));
+        canvas.drawCircle(centerX, centerY, radius, effectPaint);
+
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(getResources().getColor(R.color.text_white));
+        paint.setTextSize(radius * 1.25f);
+        canvas.drawText(String.valueOf(game.undoCoins), centerX, centerY - centerText(), paint);
+    }
+
+    private boolean isCoinPulseActive() {
+        return System.nanoTime() - coinEarnedTime < COIN_PULSE_TIME;
+    }
+
+    private void drawBoardSizeButton(Canvas canvas) {
+        drawDrawable(canvas,
+                backgroundRectangle,
+                sXBoardSize,
+                sYIcons, sXBoardSize + iconSize,
+                sYIcons + iconSize
+        );
+
+        String label = game.numSquaresX + "×" + game.numSquaresY;
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(getResources().getColor(R.color.text_white));
+        paint.setTextSize(iconSize);
+        paint.setTextSize(iconSize * (iconSize - iconPaddingSize * 2) / paint.measureText(label));
+        canvas.drawText(label, sXBoardSize + iconSize / 2f, sYIcons + iconSize / 2f - centerText(), paint);
     }
 
     private void drawHeader(Canvas canvas) {
@@ -365,6 +456,100 @@ public class MainView extends View {
         }
     }
 
+    void showAchievement(int x, int y, int value) {
+        long startTime = System.nanoTime() + ACHIEVEMENT_DELAY_TIME;
+        achievements.add(new Achievement(x, y, log2(value), startTime, random));
+        coinEarnedTime = startTime;
+        invalidate();
+    }
+
+    void clearAchievements() {
+        achievements.clear();
+        coinEarnedTime = 0;
+    }
+
+    // The colour of a new tile radiates out of it: a soft glow below the tiles (glow == true),
+    // then expanding rings and sparks above them.
+    private void drawAchievements(Canvas canvas, boolean glow) {
+        if (achievements.isEmpty()) {
+            return;
+        }
+        long currentTime = System.nanoTime();
+        canvas.save();
+        canvas.clipRect(startingX, startingY, endingX, endingY);
+        Iterator<Achievement> iterator = achievements.iterator();
+        while (iterator.hasNext()) {
+            Achievement achievement = iterator.next();
+            float progress = (float) (currentTime - achievement.startTime) / ACHIEVEMENT_ANIMATION_TIME;
+            if (progress > 1) {
+                if (!glow) {
+                    iterator.remove();
+                }
+                continue;
+            } else if (progress < 0) {
+                continue;
+            }
+
+            int color = cellColors[Math.min(achievement.index, numCellTypes - 1)];
+            float sX = startingX + gridWidth + (cellSize + gridWidth) * achievement.getX();
+            float sY = startingY + gridWidth + (cellSize + gridWidth) * achievement.getY();
+            float centerX = sX + cellSize / 2f;
+            float centerY = sY + cellSize / 2f;
+
+            if (glow) {
+                float radius = cellSize * (0.7f + 2.6f * easeOut(progress));
+                int alpha = (int) (190 * (1 - progress) * (1 - progress));
+                effectPaint.setStyle(Paint.Style.FILL);
+                effectPaint.setShader(new RadialGradient(centerX, centerY, radius,
+                        new int[]{withAlpha(color, alpha), withAlpha(color, alpha / 2), withAlpha(color, 0)},
+                        new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
+                canvas.drawCircle(centerX, centerY, radius, effectPaint);
+                effectPaint.setShader(null);
+                continue;
+            }
+
+            float cornerRadius = getResources().getDisplayMetrics().density * 5;
+            effectPaint.setStyle(Paint.Style.STROKE);
+            for (int ring = 0; ring < ACHIEVEMENT_RINGS; ring++) {
+                float ringProgress = (progress - ring * 0.15f) / 0.7f;
+                if (ringProgress <= 0 || ringProgress >= 1) {
+                    continue;
+                }
+                float spread = cellSize * 1.7f * easeOut(ringProgress);
+                effectPaint.setStrokeWidth(Math.max(1, gridWidth * 1.4f * (1 - ringProgress)));
+                effectPaint.setColor(withAlpha(color, (int) (235 * (1 - ringProgress))));
+                effectRect.set(sX - spread, sY - spread, sX + cellSize + spread, sY + cellSize + spread);
+                canvas.drawRoundRect(effectRect, cornerRadius + spread * 0.6f, cornerRadius + spread * 0.6f, effectPaint);
+            }
+
+            effectPaint.setStyle(Paint.Style.FILL);
+            int sparkAlpha = (int) (255 * (1 - progress));
+            float sparkSize = gridWidth * 0.75f * (1 - progress * 0.6f);
+            for (int i = 0; i < ACHIEVEMENT_PARTICLES; i++) {
+                float distance = cellSize * (0.45f + achievement.particleSpeeds[i] * easeOut(progress));
+                float angle = achievement.particleAngles[i];
+                float pX = centerX + (float) Math.cos(angle) * distance;
+                float pY = centerY + (float) Math.sin(angle) * distance;
+                int sparkColor = i % 2 == 0 ? color : getResources().getColor(R.color.text_white);
+                effectPaint.setColor(withAlpha(sparkColor, sparkAlpha));
+                canvas.save();
+                canvas.rotate((float) Math.toDegrees(angle) + progress * 360, pX, pY);
+                canvas.drawRect(pX - sparkSize, pY - sparkSize, pX + sparkSize, pY + sparkSize, effectPaint);
+                canvas.restore();
+            }
+        }
+        canvas.restore();
+    }
+
+    private static float easeOut(float progress) {
+        float remaining = 1 - progress;
+        return 1 - remaining * remaining * remaining;
+    }
+
+    private static int withAlpha(int color, int alpha) {
+        return Color.argb(Math.max(0, Math.min(255, alpha)), Color.red(color), Color.green(color), Color.blue(color));
+    }
+
     private void drawEndGameState(Canvas canvas) {
         double alphaChange = 1;
         continueButtonEnabled = false;
@@ -435,7 +620,7 @@ public class MainView extends View {
         Canvas canvas = new Canvas(background);
         drawHeader(canvas);
         drawNewGameButton(canvas, false);
-        drawUndoButton(canvas);
+        drawBoardSizeButton(canvas);
         drawBackground(canvas);
         drawBackgroundGrid(canvas);
         if (showHelp) drawInstructions(canvas);
@@ -456,6 +641,8 @@ public class MainView extends View {
             drawDrawable(canvas, ResourcesCompat.getDrawable(resources, cellRectangleIds[xx], null), 0, 0, cellSize, cellSize);
             drawCellText(canvas, value);
             bitmapCell[xx] = new BitmapDrawable(resources, bitmap);
+            // Sample the tile colour from the top edge, clear of the rounded corners and the text
+            cellColors[xx] = bitmap.getPixel(cellSize / 2, Math.max(1, cellSize / 12));
         }
     }
 
@@ -507,12 +694,17 @@ public class MainView extends View {
     }
 
     private void getLayout(int width, int height) {
-        cellSize = Math.min(width / (game.numSquaresX + 1), height / (game.numSquaresY + 3));
+        // The header and the board keep the size of the classic 4x4 layout. Bigger boards fit more,
+        // smaller cells into the same space: n cells plus n + 1 gaps of a seventh of a cell.
+        int classicSize = MainGame.DEFAULT_BOARD_SIZE;
+        int unitSize = Math.min(width / (classicSize + 1), height / (classicSize + 3));
+        int boardSize = classicSize * unitSize + (classicSize + 1) * (unitSize / 7);
+        cellSize = boardSize * 7 / (8 * game.numSquaresX + 1);
         gridWidth = cellSize / 7;
         int screenMiddleX = width / 2;
         int screenMiddleY = height / 2;
-        int boardMiddleY = screenMiddleY + cellSize / 2;
-        iconSize = cellSize / 2;
+        int boardMiddleY = screenMiddleY + unitSize / 2;
+        iconSize = unitSize / 2;
 
         //Grid Dimensions
         double halfNumSquaresX = game.numSquaresX / 2d;
@@ -526,7 +718,9 @@ public class MainView extends View {
 
         // Text Dimensions
         paint.setTextSize(cellSize);
-        textSize = cellSize * cellSize / Math.max(cellSize, paint.measureText("0000"));
+        cellTextSize = cellSize * cellSize / Math.max(cellSize, paint.measureText("0000"));
+        paint.setTextSize(unitSize);
+        textSize = unitSize * unitSize / Math.max(unitSize, paint.measureText("0000"));
 
         paint.setTextAlign(Paint.Align.CENTER);
         paint.setTextSize(1000);
@@ -542,8 +736,6 @@ public class MainView extends View {
             1000f * ((widthWithPadding - gridWidth * 2) / (paint.measureText(getResources().getString(R.string.you_win))))
         );
 
-        paint.setTextSize(cellSize);
-        cellTextSize = textSize;
         titleTextSize = textSize / 3;
         bodyTextSize = (int) (textSize / 1.5);
         headerTextSize = textSize * 2;
@@ -554,7 +746,7 @@ public class MainView extends View {
 
         int textShiftYAll = centerText();
         //static variables
-        sYAll = (int) (startingY - cellSize * 1.5);
+        sYAll = (int) (startingY - unitSize * 1.5);
         titleStartYAll = (int) (sYAll + textPaddingSize + titleTextSize / 2 - textShiftYAll);
         bodyStartYAll = (int) (titleStartYAll + textPaddingSize + titleTextSize / 2 + bodyTextSize / 2);
 
@@ -567,10 +759,28 @@ public class MainView extends View {
         sYIcons = (startingY + eYAll) / 2 - iconSize / 2;
         sXNewGame = (endingX - iconSize);
         sXUndo = sXNewGame - iconSize * 3 / 2 - iconPaddingSize;
+        sXBoardSize = sXUndo - iconSize * 3 / 2 - iconPaddingSize;
         resyncTime();
     }
 
     private int centerText() {
         return (int) ((paint.descent() + paint.ascent()) / 2);
+    }
+
+    private static class Achievement extends Cell {
+        final int index;
+        final long startTime;
+        final float[] particleAngles = new float[ACHIEVEMENT_PARTICLES];
+        final float[] particleSpeeds = new float[ACHIEVEMENT_PARTICLES];
+
+        Achievement(int x, int y, int index, long startTime, Random random) {
+            super(x, y);
+            this.index = index;
+            this.startTime = startTime;
+            for (int i = 0; i < ACHIEVEMENT_PARTICLES; i++) {
+                particleAngles[i] = (float) (2 * Math.PI * (i + random.nextFloat() * 0.6f) / ACHIEVEMENT_PARTICLES);
+                particleSpeeds[i] = 1.4f + random.nextFloat() * 1.4f;
+            }
+        }
     }
 }

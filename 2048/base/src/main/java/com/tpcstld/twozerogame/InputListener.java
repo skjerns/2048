@@ -49,7 +49,8 @@ class InputListener implements View.OnTouchListener {
                 lastDy = 0;
                 hasMoved = false;
                 beganOnIcon = iconPressed(mView.sXNewGame, mView.sYIcons)
-                              || iconPressed(mView.sXUndo, mView.sYIcons);
+                              || iconPressed(mView.sXUndo, mView.sYIcons)
+                              || iconPressed(mView.sXBoardSize, mView.sYIcons);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 x = event.getX();
@@ -139,6 +140,8 @@ class InputListener implements View.OnTouchListener {
 
                     } else if (iconPressed(mView.sXUndo, mView.sYIcons)) {
                         mView.game.revertUndoState();
+                    } else if (iconPressed(mView.sXBoardSize, mView.sYIcons)) {
+                        showBoardSizeDialog();
                     } else if (isTap(2) && inRange(mView.startingX, x, mView.endingX)
                             && inRange(mView.startingY, y, mView.endingY) && mView.continueButtonEnabled) {
                         mView.game.setEndlessMode();
@@ -146,6 +149,50 @@ class InputListener implements View.OnTouchListener {
                 }
         }
         return true;
+    }
+
+    private void showBoardSizeDialog() {
+        final int[] sizes = MainGame.BOARD_SIZES;
+        String[] labels = new String[sizes.length];
+        int checked = 0;
+        for (int i = 0; i < sizes.length; i++) {
+            labels[i] = sizes[i] + " × " + sizes[i];
+            if (sizes[i] == mView.game.numSquaresX) {
+                checked = i;
+            }
+        }
+        new AlertDialog.Builder(mView.getContext())
+                .setTitle(R.string.board_size_title)
+                .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                        changeBoardSize(sizes[which]);
+                    }
+                })
+                .setNegativeButton(R.string.continue_game, null)
+                .show();
+    }
+
+    private void changeBoardSize(final int size) {
+        if (size == mView.game.numSquaresX) {
+            return;
+        }
+        if (mView.game.score == 0 || mView.game.gameLost()) {
+            mView.game.setBoardSize(size);
+            return;
+        }
+        new AlertDialog.Builder(mView.getContext())
+                .setPositiveButton(R.string.new_game, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        mView.game.setBoardSize(size);
+                    }
+                })
+                .setNegativeButton(R.string.continue_game, null)
+                .setTitle(R.string.board_size_dialog_title)
+                .setMessage(R.string.board_size_dialog_message)
+                .show();
     }
 
     private float pathMoved() {

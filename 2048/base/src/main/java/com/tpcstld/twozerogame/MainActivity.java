@@ -19,11 +19,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String HEIGHT = "height";
     private static final String SCORE = "score";
     private static final String HIGH_SCORE = "high score temp";
-    private static final String UNDO_SCORE = "undo score";
-    private static final String CAN_UNDO = "can undo";
-    private static final String UNDO_GRID = "undo";
     private static final String GAME_STATE = "game state";
-    private static final String UNDO_GAME_STATE = "undo game state";
+    private static final String UNDO_HISTORY = "undo history";
+    private static final String UNDO_COINS = "undo coins";
+    private static final String MERGED_VALUES = "merged values";
 
     private static final String NO_LOGIN_PROMPT = "no_login_prompt";
 
@@ -89,9 +88,8 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
         SharedPreferences.Editor editor = settings.edit();
         Tile[][] field = view.game.grid.field;
-        Tile[][] undoField = view.game.grid.undoField;
         editor.putInt(WIDTH, field.length);
-        editor.putInt(HEIGHT, field.length);
+        editor.putInt(HEIGHT, field[0].length);
         for (int xx = 0; xx < field.length; xx++) {
             for (int yy = 0; yy < field[0].length; yy++) {
                 if (field[xx][yy] != null) {
@@ -99,20 +97,14 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     editor.putInt(xx + " " + yy, 0);
                 }
-
-                if (undoField[xx][yy] != null) {
-                    editor.putInt(UNDO_GRID + xx + " " + yy, undoField[xx][yy].getValue());
-                } else {
-                    editor.putInt(UNDO_GRID + xx + " " + yy, 0);
-                }
             }
         }
         editor.putLong(SCORE, view.game.score);
         editor.putLong(HIGH_SCORE, view.game.highScore);
-        editor.putLong(UNDO_SCORE, view.game.lastScore);
-        editor.putBoolean(CAN_UNDO, view.game.canUndo);
         editor.putInt(GAME_STATE, view.game.gameState);
-        editor.putInt(UNDO_GAME_STATE, view.game.lastGameState);
+        editor.putString(UNDO_HISTORY, view.game.undoHistoryToString());
+        editor.putInt(UNDO_COINS, view.game.undoCoins);
+        editor.putString(MERGED_VALUES, view.game.mergedValuesToString());
         editor.apply();
     }
 
@@ -126,6 +118,11 @@ public class MainActivity extends AppCompatActivity {
         view.game.aGrid.cancelAnimations();
 
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        // A game saved on a different board size can't be restored onto this one.
+        if (settings.getInt(WIDTH, view.game.numSquaresX) != view.game.numSquaresX
+                || settings.getInt(HEIGHT, view.game.numSquaresY) != view.game.numSquaresY) {
+            return;
+        }
         for (int xx = 0; xx < view.game.grid.field.length; xx++) {
             for (int yy = 0; yy < view.game.grid.field[0].length; yy++) {
                 int value = settings.getInt(xx + " " + yy, -1);
@@ -134,22 +131,15 @@ public class MainActivity extends AppCompatActivity {
                 } else if (value == 0) {
                     view.game.grid.field[xx][yy] = null;
                 }
-
-                int undoValue = settings.getInt(UNDO_GRID + xx + " " + yy, -1);
-                if (undoValue > 0) {
-                    view.game.grid.undoField[xx][yy] = new Tile(xx, yy, undoValue);
-                } else if (value == 0) {
-                    view.game.grid.undoField[xx][yy] = null;
-                }
             }
         }
 
         view.game.score = settings.getLong(SCORE, view.game.score);
         view.game.highScore = settings.getLong(HIGH_SCORE, view.game.highScore);
-        view.game.lastScore = settings.getLong(UNDO_SCORE, view.game.lastScore);
-        view.game.canUndo = settings.getBoolean(CAN_UNDO, view.game.canUndo);
         view.game.gameState = settings.getInt(GAME_STATE, view.game.gameState);
-        view.game.lastGameState = settings.getInt(UNDO_GAME_STATE, view.game.lastGameState);
+        view.game.undoHistoryFromString(settings.getString(UNDO_HISTORY, null));
+        view.game.undoCoins = settings.getInt(UNDO_COINS, 0);
+        view.game.mergedValuesFromString(settings.getString(MERGED_VALUES, null));
     }
 
     private void setStatusBarColor(Window window, int color) {

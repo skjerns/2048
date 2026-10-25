@@ -5,15 +5,10 @@ import java.util.ArrayList;
 public class Grid {
 
     public final Tile[][] field;
-    public final Tile[][] undoField;
-    private final Tile[][] bufferField;
 
     public Grid(int sizeX, int sizeY) {
         field = new Tile[sizeX][sizeY];
-        undoField = new Tile[sizeX][sizeY];
-        bufferField = new Tile[sizeX][sizeY];
         clearGrid();
-        clearUndoGrid();
     }
 
     public Cell randomAvailableCell() {
@@ -82,38 +77,20 @@ public class Grid {
         field[tile.getX()][tile.getY()] = null;
     }
 
-    public void saveTiles() {
-        for (int xx = 0; xx < bufferField.length; xx++) {
-            for (int yy = 0; yy < bufferField[0].length; yy++) {
-                if (bufferField[xx][yy] == null) {
-                    undoField[xx][yy] = null;
-                } else {
-                    undoField[xx][yy] = new Tile(xx, yy, bufferField[xx][yy].getValue());
-                }
-            }
-        }
-    }
-
-    public void prepareSaveTiles() {
+    public int[][] getValues() {
+        int[][] values = new int[field.length][field[0].length];
         for (int xx = 0; xx < field.length; xx++) {
             for (int yy = 0; yy < field[0].length; yy++) {
-                if (field[xx][yy] == null) {
-                    bufferField[xx][yy] = null;
-                } else {
-                    bufferField[xx][yy] = new Tile(xx, yy, field[xx][yy].getValue());
-                }
+                values[xx][yy] = field[xx][yy] == null ? 0 : field[xx][yy].getValue();
             }
         }
+        return values;
     }
 
-    public void revertTiles() {
-        for (int xx = 0; xx < undoField.length; xx++) {
-            for (int yy = 0; yy < undoField[0].length; yy++) {
-                if (undoField[xx][yy] == null) {
-                    field[xx][yy] = null;
-                } else {
-                    field[xx][yy] = new Tile(xx, yy, undoField[xx][yy].getValue());
-                }
+    public void setValues(int[][] values) {
+        for (int xx = 0; xx < field.length; xx++) {
+            for (int yy = 0; yy < field[0].length; yy++) {
+                field[xx][yy] = values[xx][yy] > 0 ? new Tile(xx, yy, values[xx][yy]) : null;
             }
         }
     }
@@ -122,14 +99,6 @@ public class Grid {
         for (int xx = 0; xx < field.length; xx++) {
             for (int yy = 0; yy < field[0].length; yy++) {
                 field[xx][yy] = null;
-            }
-        }
-    }
-
-    private void clearUndoGrid() {
-        for (int xx = 0; xx < field.length; xx++) {
-            for (int yy = 0; yy < field[0].length; yy++) {
-                undoField[xx][yy] = null;
             }
         }
     }
