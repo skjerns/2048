@@ -103,6 +103,17 @@ class HighScores {
                 .apply();
     }
 
+    // Empties the lists of all board sizes. Empty lists also keep the old single high scores from
+    // being imported again.
+    static void reset(Context context) {
+        SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(context).edit();
+        for (int size : MainGame.BOARD_SIZES) {
+            editor.putString(key(size), new JSONArray().toString());
+            editor.remove(MainGame.highScoreKey(size));
+        }
+        editor.apply();
+    }
+
     private static String key(int size) {
         return HIGH_SCORES + size + "x" + size;
     }

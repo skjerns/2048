@@ -51,6 +51,7 @@ class InputListener implements View.OnTouchListener {
                 beganOnIcon = iconPressed(mView.sXNewGame, mView.sYIcons)
                               || iconPressed(mView.sXUndo, mView.sYIcons)
                               || iconPressed(mView.sXBoardSize, mView.sYIcons)
+                              || iconPressed(mView.sXSettings, mView.sYIcons)
                               || highScoresPressed();
                 return true;
             case MotionEvent.ACTION_MOVE:
@@ -143,6 +144,8 @@ class InputListener implements View.OnTouchListener {
                         mView.game.revertUndoState();
                     } else if (iconPressed(mView.sXBoardSize, mView.sYIcons)) {
                         showBoardSizeDialog();
+                    } else if (iconPressed(mView.sXSettings, mView.sYIcons)) {
+                        new SettingsDialog(mView.getContext(), mView.game).show();
                     } else if (highScoresPressed()) {
                         mView.game.recordGame();
                         new HighScoresDialog(mView.getContext(), mView.game).show();

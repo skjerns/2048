@@ -159,6 +159,14 @@ public class MainGame {
         return highScoreKey(numSquaresX);
     }
 
+    // Forgets all high scores. The game in progress counts again from its current score.
+    void resetHighScores() {
+        HighScores.reset(mContext);
+        highScore = score;
+        recordHighScore();
+        mView.invalidate();
+    }
+
     // Adds this game to the high score list of its board size, or updates its entry.
     void recordGame() {
         if (grid == null || score <= 0) {

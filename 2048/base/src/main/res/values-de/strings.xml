@@ -25,4 +25,12 @@
     <string name="no_high_scores">Noch keine Spiele. Los geht\'s!</string>
     <string name="current_game">Aktuelles Spiel</string>
     <string name="close">Schließen</string>
+
+    <!-- Settings -->
+    <string name="settings">Einstellungen</string>
+    <string name="vibration">Vibration</string>
+    <string name="reset_high_scores">Bestenliste zurücksetzen</string>
+    <string name="reset_high_scores_dialog_title">Bestenliste zurücksetzen?</string>
+    <string name="reset_high_scores_dialog_message">Dadurch werden die Bestenlisten aller Spielfeldgrößen gelöscht. Das kann nicht rückgängig gemacht werden.</string>
+    <string name="high_scores_reset">Bestenliste zurückgesetzt</string>
 </resources>

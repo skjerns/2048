@@ -3,5 +3,6 @@
 
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:colorPrimaryDark">@color/status_background</item>
+        <item name="colorAccent">@color/button_background</item>
     </style>
 </resources>

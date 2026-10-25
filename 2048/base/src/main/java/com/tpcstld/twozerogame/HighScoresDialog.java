@@ -1,11 +1,7 @@
 package com.tpcstld.twozerogame;
 
-import android.app.Dialog;
 import android.content.Context;
 import android.content.res.Resources;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -24,10 +20,9 @@ import java.util.List;
 /**
  * The best games of every board size, one tab per size.
  */
-class HighScoresDialog extends Dialog {
+class HighScoresDialog extends GameDialog {
 
     private final MainGame game;
-    private final Typeface font;
     private final List<TextView> tabs = new ArrayList<>();
     private int selectedSize;
     private LinearLayout list;
@@ -36,20 +31,15 @@ class HighScoresDialog extends Dialog {
     HighScoresDialog(Context context, MainGame game) {
         super(context);
         this.game = game;
-        font = Typeface.createFromAsset(context.getAssets(), "ClearSans-Bold.ttf");
         selectedSize = game.numSquaresX;
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        setContentView(R.layout.dialog_high_scores);
+        setUpContent(R.layout.dialog_high_scores);
         Window window = getWindow();
         if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.setLayout((int) (getContext().getResources().getDisplayMetrics().widthPixels * 0.9),
-                    WindowManager.LayoutParams.WRAP_CONTENT);
             // Pinned to the top, so the tabs stay in place when the lists differ in length
             window.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
             WindowManager.LayoutParams attributes = window.getAttributes();
@@ -137,15 +127,5 @@ class HighScoresDialog extends Dialog {
             }
             list.addView(row);
         }
-    }
-
-    private void setFont(TextView... views) {
-        for (TextView view : views) {
-            view.setTypeface(font);
-        }
-    }
-
-    private int dp(int value) {
-        return (int) (value * getContext().getResources().getDisplayMetrics().density);
     }
 }

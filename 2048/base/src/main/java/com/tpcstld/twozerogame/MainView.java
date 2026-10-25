@@ -77,6 +77,7 @@ public class MainView extends View {
     public int sXNewGame;
     public int sXUndo;
     public int sXBoardSize;
+    public int sXSettings;
     public int sXHighScores;
     public int sYHighScores;
     public int eXHighScores;
@@ -384,6 +385,33 @@ public class MainView extends View {
         canvas.drawText(getResources().getString(R.string.footer), width / 2f, footerY, paint);
     }
 
+    private void drawSettingsButton(Canvas canvas) {
+        drawDrawable(canvas,
+                backgroundRectangle,
+                sXSettings,
+                sYIcons, sXSettings + iconSize,
+                sYIcons + iconSize
+        );
+
+        // A gear: eight teeth around a wheel with a hole in the middle
+        float centerX = sXSettings + iconSize / 2f;
+        float centerY = sYIcons + iconSize / 2f;
+        float radius = (iconSize - iconPaddingSize * 2) * 0.42f;
+        float toothWidth = radius * 0.45f;
+        effectPaint.setStyle(Paint.Style.FILL);
+        effectPaint.setColor(getResources().getColor(R.color.text_white));
+        for (int tooth = 0; tooth < 8; tooth++) {
+            canvas.save();
+            canvas.rotate(tooth * 45, centerX, centerY);
+            effectRect.set(centerX - toothWidth / 2, centerY - radius, centerX + toothWidth / 2, centerY);
+            canvas.drawRoundRect(effectRect, toothWidth * 0.25f, toothWidth * 0.25f, effectPaint);
+            canvas.restore();
+        }
+        canvas.drawCircle(centerX, centerY, radius * 0.74f, effectPaint);
+        effectPaint.setColor(getResources().getColor(R.color.status_background));
+        canvas.drawCircle(centerX, centerY, radius * 0.32f, effectPaint);
+    }
+
     private void drawBoardSizeButton(Canvas canvas) {
         drawDrawable(canvas,
                 backgroundRectangle,
@@ -540,17 +568,23 @@ public class MainView extends View {
             cheerIndex = log2(value);
             cheerStartTime = startTime;
 
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            vibrate();
             for (long delay : achievement.fireworkDelays) {
                 postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                        vibrate();
                     }
                 }, (ACHIEVEMENT_DELAY_TIME + delay) / 1000000);
             }
         }
         invalidate();
+    }
+
+    private void vibrate() {
+        if (SettingsDialog.isVibrationEnabled(getContext())) {
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        }
     }
 
     void clearAchievements() {
@@ -948,6 +982,7 @@ public class MainView extends View {
         drawHeader(canvas);
         drawNewGameButton(canvas, false);
         drawBoardSizeButton(canvas);
+        drawSettingsButton(canvas);
         drawBackground(canvas);
         drawBackgroundGrid(canvas);
         drawHighScoresButton(canvas);
@@ -1087,6 +1122,7 @@ public class MainView extends View {
         sXNewGame = (endingX - iconSize);
         sXUndo = sXNewGame - iconSize * 3 / 2 - iconPaddingSize;
         sXBoardSize = sXUndo - iconSize * 3 / 2 - iconPaddingSize;
+        sXSettings = sXBoardSize - iconSize * 3 / 2 - iconPaddingSize;
 
         cheerTextSize = textSize * 1.3f;
 
