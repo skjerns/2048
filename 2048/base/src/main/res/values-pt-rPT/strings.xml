@@ -2,7 +2,6 @@
 <resources>
     <string name="high_score">RECORDE</string>
     <string name="score">PONTUAÇÃO</string>
-    <string name="instructions">Deslize para mover. 2 + 2 = 4. Alcance 2048.</string>
     <string name="you_win">Ganhou!</string>
     <string name="game_over">Perdeu!</string>
     <string name="go_on">Toque para Continuar</string>

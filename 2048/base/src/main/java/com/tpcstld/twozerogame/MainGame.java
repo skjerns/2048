@@ -40,7 +40,6 @@ public class MainGame {
     private static final int GAME_ENDLESS = 2;
     private static final int GAME_ENDLESS_WON = 3;
     private static final String HIGH_SCORE = "high score";
-    private static final String FIRST_RUN = "first run";
     private static final String BOARD_SIZE = "board size";
     static final int DEFAULT_BOARD_SIZE = 4;
     static final int[] BOARD_SIZES = {4, 5, 6};
@@ -94,7 +93,6 @@ public class MainGame {
         score = DebugTools.getStartingScore();
         gameState = GAME_NORMAL;
         addStartTiles();
-        mView.showHelp = firstRun();
         mView.refreshLastTime = true;
         mView.resyncTime();
         mView.invalidate();
@@ -208,17 +206,6 @@ public class MainGame {
     private long getHighScore() {
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(mContext);
         return settings.getLong(highScoreKey(), -1);
-    }
-
-    private boolean firstRun() {
-        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(mContext);
-        if (settings.getBoolean(FIRST_RUN, true)) {
-            SharedPreferences.Editor editor = settings.edit();
-            editor.putBoolean(FIRST_RUN, false);
-            editor.apply();
-            return true;
-        }
-        return false;
     }
 
     private void prepareTiles() {

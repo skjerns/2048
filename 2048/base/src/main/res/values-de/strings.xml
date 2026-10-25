@@ -2,7 +2,6 @@
 <resources>
     <string name="high_score">HÖCHSTPUNKTZAHL</string>
     <string name="score">PUNKTE</string>
-    <string name="instructions">Wische. 2 + 2 = 4. Erreiche 2048.</string>
     <string name="you_win">Gewonnen!</string>
     <string name="game_over">Verloren!</string>
     <string name="go_on">Berühren um fortzufahren</string>

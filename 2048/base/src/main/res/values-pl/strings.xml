@@ -2,7 +2,6 @@
 <resources>
     <string name="high_score">REKORD</string>
     <string name="score">PUNKTY</string>
-    <string name="instructions">Przesuwaj płytki. 2 + 2 = 4. Dojdź do 2048.</string>
     <string name="you_win">Wygrana!</string>
     <string name="game_over">Koniec gry!</string>
     <string name="go_on">Stuknij, aby kontynuować</string>

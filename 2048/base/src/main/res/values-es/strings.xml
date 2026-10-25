@@ -2,7 +2,6 @@
 <resources>
     <string name="high_score">PUNTUACIÓN ALTA</string>
     <string name="score">PUNTAJE</string>
-    <string name="instructions">Deslice para mover. 2 + 2 = 4. Alcanza 2048.</string>
     <string name="you_win">¡Tú Ganas!</string>
     <string name="game_over">¡Juego Terminado!</string>
     <string name="go_on">Toca Para Continuar</string>

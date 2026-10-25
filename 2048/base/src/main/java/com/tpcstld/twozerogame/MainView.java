@@ -85,14 +85,12 @@ public class MainView extends View {
     public int iconSize;
     //Misc
     boolean refreshLastTime = true;
-    boolean showHelp;
     //Timing
     private long lastFPSTime = System.nanoTime();
     //Text
     private float titleTextSize;
     private float bodyTextSize;
     private float headerTextSize;
-    private float instructionsTextSize;
     private float gameOverTextSize;
     private float buttonTextSize;
     private float footerTextSize;
@@ -435,14 +433,6 @@ public class MainView extends View {
         int textShiftY = centerText() * 2;
         int headerStartY = sYAll - textShiftY;
         canvas.drawText(getResources().getString(R.string.header), startingX, headerStartY, paint);
-    }
-
-    private void drawInstructions(Canvas canvas) {
-        paint.setTextSize(instructionsTextSize);
-        paint.setTextAlign(Paint.Align.LEFT);
-        int textShiftY = centerText() * 2;
-        canvas.drawText(getResources().getString(R.string.instructions),
-                startingX, endingY - textShiftY + textPaddingSize, paint);
     }
 
     private void drawBackground(Canvas canvas) {
@@ -987,7 +977,6 @@ public class MainView extends View {
         drawBackgroundGrid(canvas);
         drawHighScoresButton(canvas);
         drawFooter(canvas, width);
-        if (showHelp) drawInstructions(canvas);
 
     }
 
@@ -1086,10 +1075,6 @@ public class MainView extends View {
 
         paint.setTextAlign(Paint.Align.CENTER);
         paint.setTextSize(1000);
-        instructionsTextSize = Math.min(
-            1000f * (widthWithPadding / (paint.measureText(getResources().getString(R.string.instructions)))),
-            textSize / 1.5f
-        );
         gameOverTextSize = Math.min(
             Math.min(
                 1000f * ((widthWithPadding - gridWidth * 2) / (paint.measureText(getResources().getString(R.string.game_over)))),

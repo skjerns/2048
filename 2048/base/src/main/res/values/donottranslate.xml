@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">2048</string>
     <string name="header">2048</string>
-    <string name="footer">For Melissa ♥️</string>
+    <string name="footer">Für Melissa ♥️</string>
 
     <!-- Cheers for the first merge of 1024 and above -->
     <string-array name="cheers">

@@ -2,7 +2,6 @@
 <resources>
     <string name="high_score">YÜKSEK SKOR</string>
     <string name="score">SKOR</string>
-    <string name="instructions">Hamle yapmak için kaydırın. 2 + 2 = 4. 2048\'e ulaşın.</string>
     <string name="you_win">Kazandın!</string>
     <string name="game_over">Oyun Bitti!</string>
     <string name="go_on">Devam etmek için dokunun</string>
