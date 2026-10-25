@@ -7,6 +7,7 @@ import android.graphics.Canvas;
 import android.graphics.Insets;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -15,6 +16,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.util.Log;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -36,13 +38,16 @@ public class MainView extends View {
     private static final float INITIAL_VELOCITY = (1 - MERGING_ACCELERATION) / 4;
     // Achievements start once the merging tiles have met.
     private static final long ACHIEVEMENT_DELAY_TIME = BASE_ANIMATION_TIME;
-    private static final long ACHIEVEMENT_ANIMATION_TIME = BASE_ANIMATION_TIME * 12;
     private static final long COIN_PULSE_TIME = BASE_ANIMATION_TIME * 6;
-    private static final int ACHIEVEMENT_RINGS = 3;
-    private static final int ACHIEVEMENT_PARTICLES = 14;
-    // First merges of 1024 and above also get a random cheer
+    // Merges of values that were merged before get a small burst from this value on
+    private static final int BURST_MIN_VALUE = 256;
+    // First merges of 1024 and above also get a random cheer, a flash and a shake
     private static final int CHEER_MIN_VALUE = 1024;
     private static final long CHEER_ANIMATION_TIME = BASE_ANIMATION_TIME * 24L;
+    private static final long FLASH_TIME = BASE_ANIMATION_TIME * 3L;
+    private static final long CONFETTI_TIME = BASE_ANIMATION_TIME * 40L;
+    private static final long FIREWORK_TIME = BASE_ANIMATION_TIME * 14L;
+    private static final long WAVE_TIME = BASE_ANIMATION_TIME * 3L;
     public final int numCellTypes = 21;
     private final BitmapDrawable[] bitmapCell = new BitmapDrawable[numCellTypes];
     private final int[] cellColors = new int[numCellTypes];
@@ -51,6 +56,7 @@ public class MainView extends View {
     private final Paint paint = new Paint();
     private final Paint effectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF effectRect = new RectF();
+    private final Path effectPath = new Path();
     private final ArrayList<Achievement> achievements = new ArrayList<>();
     private final Random random = new Random();
     private long coinEarnedTime = 0;
@@ -147,6 +153,10 @@ public class MainView extends View {
     @Override
     public void onDraw(Canvas canvas) {
         //Reset the transparency of the screen
+        long currentTime = System.nanoTime();
+        removeFinishedAchievements(currentTime);
+        canvas.save();
+        shakeScreen(canvas, currentTime);
 
         canvas.drawBitmap(background, 0, 0, paint);
 
@@ -158,13 +168,13 @@ public class MainView extends View {
             drawNewGameButton(canvas, true);
         }
 
-        drawAchievements(canvas, true);
+        drawEffectsBelowTiles(canvas, currentTime);
 
         drawRemovedTiles(canvas);
 
-        drawCells(canvas);
+        drawCells(canvas, currentTime);
 
-        drawAchievements(canvas, false);
+        drawEffectsAboveTiles(canvas, currentTime);
 
         if (!game.isActive()) {
             drawEndGameState(canvas);
@@ -174,7 +184,10 @@ public class MainView extends View {
             drawEndlessText(canvas);
         }
 
+        drawEffectsOnTop(canvas, currentTime);
+
         drawCheer(canvas);
+        canvas.restore();
 
         //Refresh the screen if there is still an animation running
         if (game.aGrid.isAnimationActive()) {
@@ -425,7 +438,7 @@ public class MainView extends View {
         }
     }
 
-    private void drawCells(Canvas canvas) {
+    private void drawCells(Canvas canvas, long currentTime) {
         paint.setTextSize(textSize);
         paint.setTextAlign(Paint.Align.CENTER);
         // Outputting the individual cells
@@ -465,8 +478,10 @@ public class MainView extends View {
                             bitmapCell[index].draw(canvas);
                         } else if (aCell.getAnimationType() == MainGame.MERGE_ANIMATION) { // Merging Animation
                             double percentDone = aCell.getPercentageDone();
-                            float textScaleSize = (float) (1 + INITIAL_VELOCITY * percentDone
-                                    + MERGING_ACCELERATION * percentDone * percentDone / 2);
+                            // Bigger values pop harder, up to almost three times the classic bounce
+                            float intensity = Math.min(3, 1 + Math.max(0, index - 6) * 0.3f);
+                            float textScaleSize = (float) (1 + intensity * (INITIAL_VELOCITY * percentDone
+                                    + MERGING_ACCELERATION * percentDone * percentDone / 2));
                             paint.setTextSize(textSize * textScaleSize);
 
                             float cellScaleSize = (float) cellSize / 2 * (1 - textScaleSize);
@@ -490,9 +505,10 @@ public class MainView extends View {
                         animated = true;
                     }
 
-                    //No active animations? Just draw the cell
+                    //No active animations? Just draw the cell, lifted by any passing wave
                     if (!animated) {
-                        bitmapCell[index].setBounds(sX, sY, eX, eY);
+                        int lift = (int) (cellSize * (waveScale(xx, yy, currentTime) - 1) / 2);
+                        bitmapCell[index].setBounds(sX - lift, sY - lift, eX + lift, eY + lift);
                         bitmapCell[index].draw(canvas);
                     }
                 }
@@ -500,11 +516,19 @@ public class MainView extends View {
         }
     }
 
-    void showAchievement(int x, int y, int value) {
+    // Called for every merge. First merges that earned a coin are celebrated, the more the bigger
+    // the value; repeated merges of big values get a small burst.
+    void showAchievement(int x, int y, int value, boolean earnedCoin) {
+        if (!earnedCoin && value < BURST_MIN_VALUE) {
+            return;
+        }
         long startTime = System.nanoTime() + ACHIEVEMENT_DELAY_TIME;
-        achievements.add(new Achievement(x, y, log2(value), startTime, random));
-        coinEarnedTime = startTime;
-        if (value >= CHEER_MIN_VALUE) {
+        Achievement achievement = new Achievement(x, y, log2(value), earnedCoin, startTime, random);
+        achievements.add(achievement);
+        if (earnedCoin) {
+            coinEarnedTime = startTime;
+        }
+        if (earnedCoin && value >= CHEER_MIN_VALUE) {
             String[] cheers = getResources().getStringArray(R.array.cheers);
             int cheer = random.nextInt(cheers.length);
             if (cheer == lastCheer) {
@@ -515,6 +539,16 @@ public class MainView extends View {
             cheerText = cheers[cheer];
             cheerIndex = log2(value);
             cheerStartTime = startTime;
+
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            for (long delay : achievement.fireworkDelays) {
+                postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    }
+                }, (ACHIEVEMENT_DELAY_TIME + delay) / 1000000);
+            }
         }
         invalidate();
     }
@@ -523,6 +557,237 @@ public class MainView extends View {
         achievements.clear();
         coinEarnedTime = 0;
         cheerText = null;
+    }
+
+    private void removeFinishedAchievements(long currentTime) {
+        Iterator<Achievement> iterator = achievements.iterator();
+        while (iterator.hasNext()) {
+            Achievement achievement = iterator.next();
+            if (currentTime - achievement.startTime > achievement.totalTime) {
+                iterator.remove();
+            }
+        }
+    }
+
+    // Big first merges shake the whole screen for a moment.
+    private void shakeScreen(Canvas canvas, long currentTime) {
+        float shakeX = 0;
+        float shakeY = 0;
+        for (Achievement achievement : achievements) {
+            float progress = (float) (currentTime - achievement.startTime) / achievement.shakeTime;
+            if (achievement.shake == 0 || progress < 0 || progress > 1) {
+                continue;
+            }
+            float amplitude = gridWidth * achievement.shake * (1 - progress) * (1 - progress);
+            double seconds = (currentTime - achievement.startTime) / 1e9;
+            shakeX += amplitude * (float) (Math.sin(seconds * 83) + Math.sin(seconds * 131) / 2) / 1.5f;
+            shakeY += amplitude * (float) (Math.cos(seconds * 97) + Math.sin(seconds * 151) / 2) / 1.5f;
+        }
+        canvas.translate(shakeX, shakeY);
+    }
+
+    // How much bigger the tile at (x, y) is drawn while the waves of huge first merges pass it.
+    private float waveScale(int x, int y, long currentTime) {
+        float scale = 1;
+        for (Achievement achievement : achievements) {
+            float distance = (float) Math.hypot(x - achievement.getX(), y - achievement.getY());
+            for (int wave = 0; wave < achievement.waves; wave++) {
+                long delay = (long) (distance * BASE_ANIMATION_TIME * 0.7f) + wave * BASE_ANIMATION_TIME * 5L;
+                float progress = (float) (currentTime - achievement.startTime - delay) / WAVE_TIME;
+                if (progress > 0 && progress < 1) {
+                    scale += 0.2f * (float) Math.sin(Math.PI * progress);
+                }
+            }
+        }
+        return scale;
+    }
+
+    private int achievementColor(Achievement achievement, int variant, float seconds) {
+        if (achievement.rainbow) {
+            return Color.HSVToColor(new float[]{(variant * 47 + seconds * 240) % 360, 0.65f, 1});
+        }
+        return cellColors[Math.min(achievement.index, numCellTypes - 1)];
+    }
+
+    // Palette for confetti and fireworks: the tile colours from 8 to 2048, and white
+    private int paletteColor(int index) {
+        return index < 0 ? getResources().getColor(R.color.text_white) : cellColors[index];
+    }
+
+    // Small celebrations stay on the board, from 2048 on they spill over the whole screen.
+    private void clipToBoard(Canvas canvas, Achievement achievement) {
+        if (!achievement.unclipped) {
+            canvas.clipRect(startingX, startingY, endingX, endingY);
+        }
+    }
+
+    // A soft glow of the tile colour, and for the biggest merges a turning sunburst behind it.
+    private void drawEffectsBelowTiles(Canvas canvas, long currentTime) {
+        for (Achievement achievement : achievements) {
+            float progress = (float) (currentTime - achievement.startTime) / achievement.effectTime;
+            if (progress < 0 || progress > 1) {
+                continue;
+            }
+            float seconds = (currentTime - achievement.startTime) / 1e9f;
+            int color = achievementColor(achievement, 0, seconds);
+            float centerX = startingX + gridWidth + (cellSize + gridWidth) * achievement.getX() + cellSize / 2f;
+            float centerY = startingY + gridWidth + (cellSize + gridWidth) * achievement.getY() + cellSize / 2f;
+            canvas.save();
+            clipToBoard(canvas, achievement);
+
+            if (achievement.sunburst) {
+                int rays = 16;
+                float radius = cellSize * (2 + 5 * easeOut(Math.min(1, progress * 2)));
+                int alpha = (int) (150 * Math.min(1, (1 - progress) * 4));
+                effectPaint.setStyle(Paint.Style.FILL);
+                effectPaint.setShader(new RadialGradient(centerX, centerY, radius,
+                        new int[]{withAlpha(color, alpha), withAlpha(color, 0)}, null, Shader.TileMode.CLAMP));
+                effectPath.reset();
+                for (int ray = 0; ray < rays; ray++) {
+                    double angle = Math.toRadians(seconds * 40 + ray * 360f / rays);
+                    double halfWidth = Math.PI / rays / 2;
+                    effectPath.moveTo(centerX, centerY);
+                    effectPath.lineTo(centerX + (float) Math.cos(angle - halfWidth) * radius,
+                            centerY + (float) Math.sin(angle - halfWidth) * radius);
+                    effectPath.lineTo(centerX + (float) Math.cos(angle + halfWidth) * radius,
+                            centerY + (float) Math.sin(angle + halfWidth) * radius);
+                    effectPath.close();
+                }
+                canvas.drawPath(effectPath, effectPaint);
+            }
+
+            float radius = cellSize * (0.7f + achievement.glowSpread * easeOut(progress));
+            int alpha = (int) (achievement.glowAlpha * (1 - progress) * (1 - progress));
+            effectPaint.setStyle(Paint.Style.FILL);
+            effectPaint.setShader(new RadialGradient(centerX, centerY, radius,
+                    new int[]{withAlpha(color, alpha), withAlpha(color, alpha / 2), withAlpha(color, 0)},
+                    new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
+            canvas.drawCircle(centerX, centerY, radius, effectPaint);
+            effectPaint.setShader(null);
+            canvas.restore();
+        }
+    }
+
+    // Rings expanding out of the tile and sparks flying away from it.
+    private void drawEffectsAboveTiles(Canvas canvas, long currentTime) {
+        float cornerRadius = getResources().getDisplayMetrics().density * 5;
+        for (Achievement achievement : achievements) {
+            float progress = (float) (currentTime - achievement.startTime) / achievement.effectTime;
+            if (progress < 0 || progress > 1) {
+                continue;
+            }
+            float seconds = (currentTime - achievement.startTime) / 1e9f;
+            float sX = startingX + gridWidth + (cellSize + gridWidth) * achievement.getX();
+            float sY = startingY + gridWidth + (cellSize + gridWidth) * achievement.getY();
+            float centerX = sX + cellSize / 2f;
+            float centerY = sY + cellSize / 2f;
+            canvas.save();
+            clipToBoard(canvas, achievement);
+
+            effectPaint.setStyle(Paint.Style.STROKE);
+            float ringStagger = 0.45f / achievement.rings;
+            for (int ring = 0; ring < achievement.rings; ring++) {
+                float ringProgress = (progress - ring * ringStagger) / 0.7f;
+                if (ringProgress <= 0 || ringProgress >= 1) {
+                    continue;
+                }
+                float spread = cellSize * achievement.ringSpread * easeOut(ringProgress);
+                effectPaint.setStrokeWidth(Math.max(1, gridWidth * achievement.ringWidth * (1 - ringProgress)));
+                effectPaint.setColor(withAlpha(achievementColor(achievement, ring, seconds), (int) (235 * (1 - ringProgress))));
+                effectRect.set(sX - spread, sY - spread, sX + cellSize + spread, sY + cellSize + spread);
+                canvas.drawRoundRect(effectRect, cornerRadius + spread * 0.6f, cornerRadius + spread * 0.6f, effectPaint);
+            }
+
+            effectPaint.setStyle(Paint.Style.FILL);
+            int sparkAlpha = (int) (255 * (1 - progress));
+            float sparkSize = gridWidth * achievement.sparkSize * (1 - progress * 0.6f);
+            for (int i = 0; i < achievement.sparkAngles.length; i++) {
+                float distance = cellSize * (0.45f + achievement.sparkSpeeds[i] * easeOut(progress));
+                float angle = achievement.sparkAngles[i];
+                float pX = centerX + (float) Math.cos(angle) * distance;
+                float pY = centerY + (float) Math.sin(angle) * distance;
+                int sparkColor = i % 2 == 0 ? achievementColor(achievement, i, seconds)
+                        : getResources().getColor(R.color.text_white);
+                effectPaint.setColor(withAlpha(sparkColor, sparkAlpha));
+                canvas.save();
+                canvas.rotate((float) Math.toDegrees(angle) + progress * 360, pX, pY);
+                canvas.drawRect(pX - sparkSize, pY - sparkSize, pX + sparkSize, pY + sparkSize, effectPaint);
+                canvas.restore();
+            }
+            canvas.restore();
+        }
+    }
+
+    // Over everything else: a white flash, confetti raining down and fireworks.
+    private void drawEffectsOnTop(Canvas canvas, long currentTime) {
+        int width = getWidth();
+        int height = getHeight();
+        for (Achievement achievement : achievements) {
+            long elapsed = currentTime - achievement.startTime;
+            if (elapsed < 0) {
+                continue;
+            }
+            float seconds = elapsed / 1e9f;
+
+            if (achievement.flash > 0 && elapsed < FLASH_TIME) {
+                float fade = 1 - (float) elapsed / FLASH_TIME;
+                effectPaint.setStyle(Paint.Style.FILL);
+                effectPaint.setColor(withAlpha(Color.WHITE, (int) (255 * achievement.flash * fade * fade)));
+                if (achievement.unclipped) {
+                    canvas.drawRect(-gridWidth * 4, -gridWidth * 4, width + gridWidth * 4, height + gridWidth * 4, effectPaint);
+                } else {
+                    canvas.drawRect(startingX, startingY, endingX, endingY, effectPaint);
+                }
+            }
+
+            if (elapsed < CONFETTI_TIME) {
+                float fade = Math.min(1, (1 - (float) elapsed / CONFETTI_TIME) * 4);
+                effectPaint.setStyle(Paint.Style.FILL);
+                for (int i = 0; i < achievement.confettiX.length; i++) {
+                    float y = (achievement.confettiY[i] + achievement.confettiSpeed[i] * seconds) * height;
+                    if (y < -gridWidth * 2 || y > height + gridWidth * 2) {
+                        continue;
+                    }
+                    float phase = achievement.confettiPhase[i];
+                    float x = achievement.confettiX[i] * width + (float) Math.sin(phase + seconds * 3) * cellSize * 0.3f;
+                    float size = gridWidth * achievement.confettiSize[i];
+                    // Paper flutter: the piece turns its narrow side to us and back
+                    float flutter = Math.abs((float) Math.cos(phase + seconds * 7));
+                    effectPaint.setColor(withAlpha(paletteColor(achievement.confettiColor[i]), (int) (255 * fade)));
+                    canvas.save();
+                    canvas.rotate(phase * 57 + seconds * achievement.confettiSpin[i], x, y);
+                    canvas.drawRect(x - size * flutter, y - size * 0.6f, x + size * flutter, y + size * 0.6f, effectPaint);
+                    canvas.restore();
+                }
+            }
+
+            for (int burst = 0; burst < achievement.fireworkDelays.length; burst++) {
+                float progress = (float) (elapsed - achievement.fireworkDelays[burst]) / FIREWORK_TIME;
+                if (progress < 0 || progress > 1) {
+                    continue;
+                }
+                float centerX = achievement.fireworkX[burst] * width;
+                float centerY = achievement.fireworkY[burst] * height;
+                int color = paletteColor(achievement.fireworkColors[burst]);
+                int alpha = (int) (255 * (1 - progress));
+                effectPaint.setStyle(Paint.Style.FILL);
+                if (progress < 0.12f) {
+                    effectPaint.setColor(withAlpha(Color.WHITE, (int) (255 * (1 - progress / 0.12f))));
+                    canvas.drawCircle(centerX, centerY, cellSize * 0.5f * progress / 0.12f, effectPaint);
+                }
+                int particles = 28;
+                float radius = cellSize * 2.2f * easeOut(progress);
+                float drop = cellSize * 0.9f * progress * progress;
+                for (int i = 0; i < particles; i++) {
+                    double angle = 2 * Math.PI * i / particles + burst;
+                    float speed = i % 3 == 0 ? 0.7f : 1;
+                    float pX = centerX + (float) Math.cos(angle) * radius * speed;
+                    float pY = centerY + (float) Math.sin(angle) * radius * speed + drop;
+                    effectPaint.setColor(withAlpha(i % 4 == 0 ? Color.WHITE : color, alpha));
+                    canvas.drawCircle(pX, pY, gridWidth * 0.45f * (1 - progress * 0.5f), effectPaint);
+                }
+            }
+        }
     }
 
     // The cheer pops in over the upper part of the board, tilted and wobbling a little, then
@@ -555,16 +820,20 @@ public class MainView extends View {
         float centerX = (startingX + endingX) / 2f;
         float centerY = startingY + (endingY - startingY) * (0.3f - 0.08f * progress);
         cheerPaint.setTextAlign(Paint.Align.CENTER);
-        cheerPaint.setTextSize(cheerTextSize);
+        float size = cheerTextSize * (1 + 0.12f * Math.max(0, cheerIndex - 10));
+        cheerPaint.setTextSize(size);
         float maxWidth = (endingX - startingX) * 0.9f;
         float width = cheerPaint.measureText(cheerText);
         if (width > maxWidth) {
-            cheerPaint.setTextSize(cheerTextSize * maxWidth / width);
+            cheerPaint.setTextSize(size * maxWidth / width);
         }
         float baseline = centerY - (cheerPaint.descent() + cheerPaint.ascent()) / 2;
 
         int color = cellColors[Math.min(cheerIndex, numCellTypes - 1)];
         int outline = Color.rgb(Color.red(color) * 7 / 10, Color.green(color) * 7 / 10, Color.blue(color) * 7 / 10);
+        if (cheerIndex >= 12) {
+            outline = Color.HSVToColor(new float[]{(progress * 720) % 360, 0.8f, 0.75f});
+        }
 
         canvas.save();
         canvas.rotate(-6 + 2 * (float) Math.sin(progress * Math.PI * 4), centerX, centerY);
@@ -579,79 +848,6 @@ public class MainView extends View {
         cheerPaint.clearShadowLayer();
         cheerPaint.setColor(withAlpha(getResources().getColor(R.color.text_white), alpha));
         canvas.drawText(cheerText, centerX, baseline, cheerPaint);
-        canvas.restore();
-    }
-
-    // The colour of a new tile radiates out of it: a soft glow below the tiles (glow == true),
-    // then expanding rings and sparks above them.
-    private void drawAchievements(Canvas canvas, boolean glow) {
-        if (achievements.isEmpty()) {
-            return;
-        }
-        long currentTime = System.nanoTime();
-        canvas.save();
-        canvas.clipRect(startingX, startingY, endingX, endingY);
-        Iterator<Achievement> iterator = achievements.iterator();
-        while (iterator.hasNext()) {
-            Achievement achievement = iterator.next();
-            float progress = (float) (currentTime - achievement.startTime) / ACHIEVEMENT_ANIMATION_TIME;
-            if (progress > 1) {
-                if (!glow) {
-                    iterator.remove();
-                }
-                continue;
-            } else if (progress < 0) {
-                continue;
-            }
-
-            int color = cellColors[Math.min(achievement.index, numCellTypes - 1)];
-            float sX = startingX + gridWidth + (cellSize + gridWidth) * achievement.getX();
-            float sY = startingY + gridWidth + (cellSize + gridWidth) * achievement.getY();
-            float centerX = sX + cellSize / 2f;
-            float centerY = sY + cellSize / 2f;
-
-            if (glow) {
-                float radius = cellSize * (0.7f + 2.6f * easeOut(progress));
-                int alpha = (int) (190 * (1 - progress) * (1 - progress));
-                effectPaint.setStyle(Paint.Style.FILL);
-                effectPaint.setShader(new RadialGradient(centerX, centerY, radius,
-                        new int[]{withAlpha(color, alpha), withAlpha(color, alpha / 2), withAlpha(color, 0)},
-                        new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
-                canvas.drawCircle(centerX, centerY, radius, effectPaint);
-                effectPaint.setShader(null);
-                continue;
-            }
-
-            float cornerRadius = getResources().getDisplayMetrics().density * 5;
-            effectPaint.setStyle(Paint.Style.STROKE);
-            for (int ring = 0; ring < ACHIEVEMENT_RINGS; ring++) {
-                float ringProgress = (progress - ring * 0.15f) / 0.7f;
-                if (ringProgress <= 0 || ringProgress >= 1) {
-                    continue;
-                }
-                float spread = cellSize * 1.7f * easeOut(ringProgress);
-                effectPaint.setStrokeWidth(Math.max(1, gridWidth * 1.4f * (1 - ringProgress)));
-                effectPaint.setColor(withAlpha(color, (int) (235 * (1 - ringProgress))));
-                effectRect.set(sX - spread, sY - spread, sX + cellSize + spread, sY + cellSize + spread);
-                canvas.drawRoundRect(effectRect, cornerRadius + spread * 0.6f, cornerRadius + spread * 0.6f, effectPaint);
-            }
-
-            effectPaint.setStyle(Paint.Style.FILL);
-            int sparkAlpha = (int) (255 * (1 - progress));
-            float sparkSize = gridWidth * 0.75f * (1 - progress * 0.6f);
-            for (int i = 0; i < ACHIEVEMENT_PARTICLES; i++) {
-                float distance = cellSize * (0.45f + achievement.particleSpeeds[i] * easeOut(progress));
-                float angle = achievement.particleAngles[i];
-                float pX = centerX + (float) Math.cos(angle) * distance;
-                float pY = centerY + (float) Math.sin(angle) * distance;
-                int sparkColor = i % 2 == 0 ? color : getResources().getColor(R.color.text_white);
-                effectPaint.setColor(withAlpha(sparkColor, sparkAlpha));
-                canvas.save();
-                canvas.rotate((float) Math.toDegrees(angle) + progress * 360, pX, pY);
-                canvas.drawRect(pX - sparkSize, pY - sparkSize, pX + sparkSize, pY + sparkSize, effectPaint);
-                canvas.restore();
-            }
-        }
         canvas.restore();
     }
 
@@ -921,20 +1117,133 @@ public class MainView extends View {
         return (int) ((paint.descent() + paint.ascent()) / 2);
     }
 
+    // One celebrated merge. Its level decides how big the celebration gets: level 0 is a first 32,
+    // every doubling adds one. Repeated merges get a much smaller burst.
     private static class Achievement extends Cell {
         final int index;
         final long startTime;
-        final float[] particleAngles = new float[ACHIEVEMENT_PARTICLES];
-        final float[] particleSpeeds = new float[ACHIEVEMENT_PARTICLES];
+        // Glow, rings and sparks
+        final long effectTime;
+        // Until the last confetti and fireworks are gone
+        final long totalTime;
+        final float glowSpread;
+        final int glowAlpha;
+        final int rings;
+        final float ringSpread;
+        final float ringWidth;
+        final float sparkSize;
+        final float[] sparkAngles;
+        final float[] sparkSpeeds;
+        // Big first merges
+        final float flash;
+        final float shake;
+        final long shakeTime;
+        final boolean unclipped;
+        final boolean rainbow;
+        final boolean sunburst;
+        final int waves;
+        // Confetti: position and start height as fractions of the screen, fall speed in screens
+        // per second, flutter phase, spin in degrees per second, size and palette colour
+        final float[] confettiX;
+        final float[] confettiY;
+        final float[] confettiSpeed;
+        final float[] confettiPhase;
+        final float[] confettiSpin;
+        final float[] confettiSize;
+        final int[] confettiColor;
+        // Fireworks: position as fractions of the screen, start and palette colour
+        final float[] fireworkX;
+        final float[] fireworkY;
+        final long[] fireworkDelays;
+        final int[] fireworkColors;
 
-        Achievement(int x, int y, int index, long startTime, Random random) {
+        Achievement(int x, int y, int index, boolean firstMerge, long startTime, Random random) {
             super(x, y);
             this.index = index;
             this.startTime = startTime;
-            for (int i = 0; i < ACHIEVEMENT_PARTICLES; i++) {
-                particleAngles[i] = (float) (2 * Math.PI * (i + random.nextFloat() * 0.6f) / ACHIEVEMENT_PARTICLES);
-                particleSpeeds[i] = 1.4f + random.nextFloat() * 1.4f;
+            int level = Math.max(0, firstMerge ? index - 5 : index - 8);
+            int sparks;
+            if (firstMerge) {
+                effectTime = BASE_ANIMATION_TIME * (12L + 2 * level);
+                glowSpread = 2.6f + 0.4f * level;
+                glowAlpha = Math.min(255, 190 + 8 * level);
+                rings = Math.min(3 + level / 2, 7);
+                ringSpread = 1.7f + 0.3f * level;
+                ringWidth = 1.4f + 0.15f * level;
+                sparkSize = 0.75f + 0.05f * level;
+                sparks = Math.min(14 + 5 * level, 70);
+            } else {
+                effectTime = BASE_ANIMATION_TIME * (7L + level);
+                glowSpread = 1 + 0.2f * level;
+                glowAlpha = 90;
+                rings = Math.min(1 + level / 2, 3);
+                ringSpread = 0.9f + 0.2f * level;
+                ringWidth = 1;
+                sparkSize = 0.6f;
+                sparks = 8 + 3 * level;
             }
+            boolean big = firstMerge && level >= 5;
+            flash = big ? Math.min(0.3f + 0.1f * (level - 5), 0.7f) : 0;
+            shake = big ? 0.6f + 0.6f * (level - 5) : 0;
+            shakeTime = BASE_ANIMATION_TIME * (5L + 2 * Math.max(0, level - 5));
+            unclipped = firstMerge && level >= 6;
+            rainbow = firstMerge && level >= 7;
+            sunburst = firstMerge && level >= 8;
+            waves = firstMerge ? Math.max(0, level - 6) : 0;
+
+            sparkAngles = new float[sparks];
+            sparkSpeeds = new float[sparks];
+            for (int i = 0; i < sparks; i++) {
+                sparkAngles[i] = (float) (2 * Math.PI * (i + random.nextFloat() * 0.6f) / sparks);
+                sparkSpeeds[i] = (1.4f + random.nextFloat() * 1.4f) * (1 + 0.15f * level);
+            }
+
+            int confetti = firstMerge && level >= 6 ? Math.min(70 * (level - 5), 280) : 0;
+            confettiX = new float[confetti];
+            confettiY = new float[confetti];
+            confettiSpeed = new float[confetti];
+            confettiPhase = new float[confetti];
+            confettiSpin = new float[confetti];
+            confettiSize = new float[confetti];
+            confettiColor = new int[confetti];
+            for (int i = 0; i < confetti; i++) {
+                confettiX[i] = random.nextFloat();
+                confettiY[i] = -0.05f - random.nextFloat() * 0.7f;
+                confettiSpeed[i] = 0.3f + random.nextFloat() * 0.35f;
+                confettiPhase[i] = random.nextFloat() * 6.3f;
+                confettiSpin[i] = (random.nextBoolean() ? 1 : -1) * (120 + random.nextFloat() * 400);
+                confettiSize[i] = 0.5f + random.nextFloat() * 0.5f;
+                confettiColor[i] = randomPaletteColor(random);
+            }
+
+            int fireworks = firstMerge && level >= 7 ? Math.min(3 * (level - 6), 12) : 0;
+            fireworkX = new float[fireworks];
+            fireworkY = new float[fireworks];
+            fireworkDelays = new long[fireworks];
+            fireworkColors = new int[fireworks];
+            long lastFirework = 0;
+            for (int i = 0; i < fireworks; i++) {
+                fireworkX[i] = 0.15f + random.nextFloat() * 0.7f;
+                fireworkY[i] = 0.12f + random.nextFloat() * 0.5f;
+                fireworkDelays[i] = BASE_ANIMATION_TIME * (2L + 4 * i) + (long) (random.nextFloat() * BASE_ANIMATION_TIME * 2);
+                fireworkColors[i] = randomPaletteColor(random);
+                lastFirework = fireworkDelays[i] + FIREWORK_TIME;
+            }
+
+            long longest = Math.max(effectTime, Math.max(shakeTime, lastFirework));
+            if (confetti > 0) {
+                longest = Math.max(longest, CONFETTI_TIME);
+            }
+            if (waves > 0) {
+                longest = Math.max(longest, BASE_ANIMATION_TIME * (5L * waves + 10));
+            }
+            totalTime = longest;
+        }
+
+        // A tile colour from 8 to 2048, or -1 for white
+        private static int randomPaletteColor(Random random) {
+            int color = 2 + random.nextInt(11);
+            return color == 2 ? -1 : color;
         }
     }
 }

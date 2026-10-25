@@ -443,10 +443,12 @@ public class MainGame {
                         }
 
                         // A value merged for the first time in this game earns an undo coin
-                        if (merged.getValue() >= MIN_COIN_VALUE && mergedValues.add(merged.getValue())) {
+                        boolean earnedCoin = merged.getValue() >= MIN_COIN_VALUE
+                                && mergedValues.add(merged.getValue());
+                        if (earnedCoin) {
                             undoCoins++;
-                            mView.showAchievement(merged.getX(), merged.getY(), merged.getValue());
                         }
+                        mView.showAchievement(merged.getX(), merged.getY(), merged.getValue(), earnedCoin);
 
                         // The mighty 2048 tile
                         if (merged.getValue() >= winValue() && !gameWon()) {

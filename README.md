@@ -22,8 +22,11 @@ An ad-free build of the game, installable next to the Play Store version
   coins last. The badge on the undo button shows how many you have.
 * **Undo animation:** an undo plays the move backwards. The new tile shrinks away and merged tiles
   split and slide back to where they came from.
-* **Achievement effect:** those first-time merges radiate the tile's colour out across the board.
-  First merges of 1024 and above also pop up a random cheer.
+* **Achievement effect:** those first-time merges radiate the tile's colour out across the board,
+  more intensely the bigger the value. From 1024 on there is a random cheer, a flash, a screen shake
+  and a buzz; 2048 rains confetti over the whole screen; 4096 adds fireworks, rainbow rings and a
+  wave through the tiles; 8192 and up add a turning sunburst. Every merge pops harder the bigger
+  its value, and repeated merges from 256 on get a small burst.
 * **High scores:** the button under the board lists the 10 best games of every board size, one tab
   per size, with the best tile of each game.
 
