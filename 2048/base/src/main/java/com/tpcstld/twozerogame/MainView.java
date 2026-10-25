@@ -40,8 +40,8 @@ public class MainView extends View {
     private static final long COIN_PULSE_TIME = BASE_ANIMATION_TIME * 6;
     private static final int ACHIEVEMENT_RINGS = 3;
     private static final int ACHIEVEMENT_PARTICLES = 14;
-    // First merges of values above 1024 also get a random cheer
-    private static final int CHEER_MIN_VALUE = 2048;
+    // First merges of 1024 and above also get a random cheer
+    private static final int CHEER_MIN_VALUE = 1024;
     private static final long CHEER_ANIMATION_TIME = BASE_ANIMATION_TIME * 24L;
     public final int numCellTypes = 21;
     private final BitmapDrawable[] bitmapCell = new BitmapDrawable[numCellTypes];

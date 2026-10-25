@@ -4,7 +4,7 @@
     <string name="header">2048</string>
     <string name="footer">For Melissa ♥️</string>
 
-    <!-- Cheers for the first merge of a value above 1024 -->
+    <!-- Cheers for the first merge of 1024 and above -->
     <string-array name="cheers">
         <item>Melissa ist die Beste!</item>
         <item>Fr Mañana go go!</item>
