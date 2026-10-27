@@ -29,7 +29,8 @@ An ad-free build of the game, installable next to the Play Store version
   its value, and repeated merges from 256 on get a small burst.
 * **High scores:** the button under the board lists the 10 best games of every board size, one tab
   per size, with the best tile of each game.
-* **Settings:** the gear button turns vibration on or off and resets the high scores.
+* **Settings:** the gear button turns vibration on or off, sets the animation speed (50–400%)
+  and resets the high scores.
 
 Build with JDK 17–21 and the Android SDK: `cd 2048 && ./gradlew :base:assembleDebug`.
 `tools/run-emulator.sh` builds, boots an emulator and installs the game in one go.
