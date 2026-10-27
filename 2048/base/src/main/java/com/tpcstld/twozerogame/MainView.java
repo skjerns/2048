@@ -86,11 +86,9 @@ public class MainView extends View {
     //Misc
     boolean refreshLastTime = true;
     //Timing
-    // Every animation runs on this clock, which goes as fast as the animation speed setting says
+    // How fast tiles slide, spawn and pop, from the animation speed setting
     private float animationSpeed;
-    private long clockRealTime = System.nanoTime();
-    private long clockTime = clockRealTime;
-    private long lastFPSTime = clockTime;
+    private long lastFPSTime = System.nanoTime();
     //Text
     private float titleTextSize;
     private float bodyTextSize;
@@ -157,7 +155,7 @@ public class MainView extends View {
     @Override
     public void onDraw(Canvas canvas) {
         //Reset the transparency of the screen
-        long currentTime = animationTime();
+        long currentTime = System.nanoTime();
         removeFinishedAchievements(currentTime);
         canvas.save();
         shakeScreen(canvas, currentTime);
@@ -344,7 +342,7 @@ public class MainView extends View {
     // A badge with the number of undo coins, which pops when a coin is earned.
     private void drawUndoCoins(Canvas canvas) {
         float scale = 1;
-        long sinceEarned = animationTime() - coinEarnedTime;
+        long sinceEarned = System.nanoTime() - coinEarnedTime;
         if (sinceEarned >= 0 && sinceEarned < COIN_PULSE_TIME) {
             scale += 0.6f * (float) Math.sin(Math.PI * sinceEarned / COIN_PULSE_TIME);
         }
@@ -363,7 +361,7 @@ public class MainView extends View {
     }
 
     private boolean isCoinPulseActive() {
-        return animationTime() - coinEarnedTime < COIN_PULSE_TIME;
+        return System.nanoTime() - coinEarnedTime < COIN_PULSE_TIME;
     }
 
     private void drawHighScoresButton(Canvas canvas) {
@@ -545,7 +543,9 @@ public class MainView extends View {
         if (!earnedCoin && value < BURST_MIN_VALUE) {
             return;
         }
-        long startTime = animationTime() + ACHIEVEMENT_DELAY_TIME;
+        // Starts when the sliding tiles meet, however fast they slide
+        long delayTime = (long) (ACHIEVEMENT_DELAY_TIME / animationSpeed);
+        long startTime = System.nanoTime() + delayTime;
         Achievement achievement = new Achievement(x, y, log2(value), earnedCoin, startTime, random);
         achievements.add(achievement);
         if (earnedCoin) {
@@ -570,21 +570,13 @@ public class MainView extends View {
                     public void run() {
                         vibrate();
                     }
-                }, (long) ((ACHIEVEMENT_DELAY_TIME + delay) / 1000000 / animationSpeed));
+                }, (delayTime + delay) / 1000000);
             }
         }
         invalidate();
     }
 
-    long animationTime() {
-        long realTime = System.nanoTime();
-        clockTime += (long) ((realTime - clockRealTime) * animationSpeed);
-        clockRealTime = realTime;
-        return clockTime;
-    }
-
     void setAnimationSpeed(float speed) {
-        animationTime();
         animationSpeed = speed;
     }
 
@@ -837,7 +829,7 @@ public class MainView extends View {
         if (cheerText == null) {
             return;
         }
-        float progress = (float) (animationTime() - cheerStartTime) / CHEER_ANIMATION_TIME;
+        float progress = (float) (System.nanoTime() - cheerStartTime) / CHEER_ANIMATION_TIME;
         if (progress > 1) {
             cheerText = null;
             return;
@@ -1052,13 +1044,13 @@ public class MainView extends View {
     }
 
     private void tick() {
-        long currentTime = animationTime();
-        game.aGrid.tickAll(currentTime - lastFPSTime);
+        long currentTime = System.nanoTime();
+        game.aGrid.tickAll((long) ((currentTime - lastFPSTime) * animationSpeed));
         lastFPSTime = currentTime;
     }
 
     public void resyncTime() {
-        lastFPSTime = animationTime();
+        lastFPSTime = System.nanoTime();
     }
 
     private void getLayout(int width, int height) {
